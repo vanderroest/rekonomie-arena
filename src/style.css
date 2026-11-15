@@ -331,3 +331,40 @@ textarea.open { width: 100%; min-height: 110px; border: 2px solid var(--rand); b
 .kk-ic { font-size: 3.4rem; margin: 10px 0; }
 .kk-info { font-family: -apple-system, sans-serif; font-size: .88rem; color: var(--inkt2); }
 @media (max-width: 640px) { .hud-titel { display: none; } .boon { width: 34px; height: 34px; font-size: 1.05rem; } .vakjekop h2 { font-size: 1.15rem; } }
+
+/* legenda in de zijkant van de kaart */
+.kaartlayout { max-width: 1140px; margin: 0 auto; display: flex; gap: 18px; align-items: flex-start; }
+.kaartkolom { flex: 1; min-width: 0; }
+.legenda-paneel { width: 230px; flex: none; position: sticky; top: 10px; color: var(--inkt); border-radius: 10px;
+  background: radial-gradient(ellipse at 50% 30%, rgba(255,250,230,.6), transparent 70%), #dfeaf0; background-color: #e6ddc4;
+  box-shadow: inset 0 0 26px rgba(90,60,25,.45), 0 6px 20px rgba(0,0,0,.5); font-family: var(--fell); z-index: 5; }
+.legenda-kop { width: 100%; display: flex; justify-content: space-between; align-items: center; background: none; border: none; color: var(--inkt); font-family: var(--fell); font-size: 1.3rem; padding: 10px 14px; min-height: 48px; border-bottom: 1px dashed #b49a6c; }
+.legenda-inhoud { padding: 8px 12px 12px; }
+.legenda-paneel.dicht .legenda-inhoud { display: none; }
+.legenda-paneel.dicht .legenda-kop { border-bottom: none; }
+.legenda-tip { font-size: .9rem; margin: 2px 0 8px; font-style: italic; }
+.legenda-paneel ul { list-style: none; padding: 0; margin: 0 0 8px; }
+.legenda-paneel li { display: flex; align-items: center; gap: 9px; padding: 4px 0; font-size: .95rem; line-height: 1.15; }
+.legenda-paneel li small { display: block; font-size: .78rem; color: var(--inkt2); font-family: -apple-system, sans-serif; margin-top: 1px; }
+.lg-ic { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--inkt2); background: #efe1bd; display: inline-flex; align-items: center; justify-content: center; font-size: 1.05rem; }
+.lg-ring { border: 3px solid #b5832a; box-shadow: 0 0 0 3px rgba(181,131,42,.3); }
+.lg-klaar { box-shadow: 0 0 0 4px #efe1bd, 0 0 0 6px #2b1d12; }
+.lg-teken { flex: none; width: 34px; text-align: center; font-size: 1.2rem; }
+.lg-tekens { border-top: 1px dashed #b49a6c; padding-top: 6px !important; }
+.lg-meer { color: var(--inkt); padding: 4px 0; font-size: .85rem; }
+/* smallere schermen (iPad staand, telefoon): zwevend paneel rechtsboven, inklapbaar */
+@media (min-width: 700px) and (max-width: 1099px) {
+  .kaartlayout { gap: 10px; }
+  .legenda-paneel { width: 196px; }
+  .legenda-paneel.dicht { width: 150px; }
+  .legenda-paneel li { font-size: .88rem; }
+  .lg-ic, .lg-teken { width: 30px; height: 30px; font-size: .95rem; }
+  .kaartrol { padding-left: 6px; padding-right: 6px; }
+}
+@media (max-width: 699px) {
+  .kaartlayout { display: block; }
+  .legenda-paneel { position: fixed; right: 10px; top: 76px; width: 215px; max-height: calc(100dvh - 96px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .legenda-paneel.dicht { width: auto; }
+  .legenda-paneel.dicht .legenda-kop { font-size: 1.05rem; padding: 6px 12px; min-height: 42px; gap: 8px; }
+}
+@media (max-width: 640px) { .legenda-paneel { top: 136px; width: 200px; } }

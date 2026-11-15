@@ -174,12 +174,35 @@ function hudHTML(h) {
     <span class="opslag" id="opslag"></span></header>`;
 }
 
+/* ---------- legenda in de zijkant ---------- */
+const LEGENDA = [
+  ['opd', 'Opdracht uit het boekje'], ['elite', 'Pittige opdracht: dubbele munten + blessing'], ['event', 'Verrassing: krantenbericht, snelle som of gok'],
+  ['schat', 'Eén som maken, dan een blessing kiezen'], ['rust', 'Harten terug of oefenen voor een blessing'], ['winkel', 'Blessings en harten kopen'], ['boss', 'De zelftest: niet over te slaan']
+];
+function legendaDicht() { try { const v = localStorage.getItem('rk_legenda'); return v === null ? window.innerWidth < 700 : v === 'dicht'; } catch (e) { return false; } }
+function legendaPaneel() {
+  const dicht = legendaDicht();
+  return `<aside class="legenda-paneel ${dicht ? 'dicht' : ''}" id="legendaPaneel">
+    <button class="legenda-kop" data-act="legenda-toggle" aria-expanded="${!dicht}"><span>📜 Legenda</span><span class="pijl">${dicht ? '◂' : '▾'}</span></button>
+    <div class="legenda-inhoud">
+      <p class="legenda-tip">Tik op een vakje met een <b>gouden ring</b>: daar kun je nu heen.</p>
+      <ul>${LEGENDA.map(([t, oms]) => `<li><span class="lg-ic" style="border-color:${VT[t].kleur}">${VT[t].ic}</span><span><b>${VT[t].naam}</b><small>${oms}</small></span></li>`).join('')}</ul>
+      <ul class="lg-tekens">
+        <li><span class="lg-ic lg-ring"></span><span>Hier kun je heen</span></li>
+        <li><span class="lg-teken" style="color:#b3261e;font-weight:bold">✕</span><span>Jouw plek</span></li>
+        <li><span class="lg-ic lg-klaar"></span><span>Voltooid</span></li>
+        <li><span class="lg-teken">🦘</span><span>Overgeslagen</span></li>
+      </ul>
+      <button class="link lg-meer" data-act="legenda">Meer uitleg over blessings</button>
+    </div></aside>`;
+}
+
 /* ---------- schermen ---------- */
 function openKaart(h, scrollNaarPos = true) {
   mapState(); ui.scherm = 'kaart'; ui.h = h; ui.node = null; ui.cur = null;
   const M = st.m[h];
-  app().innerHTML = `<div class="kaartscherm">${hudHTML(h)}<div class="kaartrol" id="kaartrol"><div class="perkament">${kaartSVG(h)}</div>
-    ${M.boss ? `<div class="vrijspel">🏆 Eindbaas verslagen! <b>Vrij spel</b>: je mag alle overige vakjes nog bezoeken voor extra XP.</div>` : ''}</div></div>`;
+  app().innerHTML = `<div class="kaartscherm">${hudHTML(h)}<div class="kaartrol" id="kaartrol"><div class="kaartlayout"><div class="kaartkolom"><div class="perkament">${kaartSVG(h)}</div>
+    ${M.boss ? `<div class="vrijspel">🏆 Eindbaas verslagen! <b>Vrij spel</b>: je mag alle overige vakjes nog bezoeken voor extra XP.</div>` : ''}</div>${legendaPaneel()}</div></div></div>`;
   zetOpslag(saveState);
   if (scrollNaarPos) requestAnimationFrame(() => {
     const rol = $('#kaartrol'); const doel = document.querySelector('.vakje.kan') || document.querySelector('.kruis');
@@ -193,7 +216,7 @@ function kiesVakje(id) {
   if (M.cur === id) return betreed(id);
   const v = VT[n.t];
   const titel = n.t === 'opd' || n.t === 'elite' ? `${v.ic} ${v.naam} · opdracht ${n.ref}` : n.t === 'boss' ? `🐉 ${esc(KAARTEN[h].boss.naam)}` : `${v.ic} ${v.naam}`;
-  const uitleg = { opd: 'Maak de opdracht uit het boekje. Elk fout antwoord kost een hart.', elite: 'Een pittige opdracht. Lukt het? Dan krijg je dubbele munten en een boon naar keuze.', event: 'Wat hier gebeurt, zie je pas als je het vakje betreedt…', schat: 'Open de kist met de juiste sleutel (één som) en kies een boon.', rust: 'Rust uit (+2 harten) of oefen voor een boon.', winkel: 'Koop boons of een hart met je munten.', boss: 'De zelftest in drie rondes. Je kunt de eindbaas niet overslaan.' }[n.t];
+  const uitleg = { opd: 'Maak de opdracht uit het boekje. Elk fout antwoord kost een hart.', elite: 'Een pittige opdracht. Lukt het? Dan krijg je dubbele munten en een blessing naar keuze.', event: 'Wat hier gebeurt, zie je pas als je het vakje betreedt…', schat: 'Open de kist met de juiste sleutel (één som) en kies een blessing.', rust: 'Rust uit (+2 harten) of oefen voor een blessing.', winkel: 'Koop blessings of een hart met je munten.', boss: 'De zelftest in drie rondes. Je kunt de eindbaas niet overslaan.' }[n.t];
   const magSpringen = m.boons.includes('sprong') && n.t !== 'boss' && !M.boss;
   modal(`<div class="perkament-modal"><h2>${titel}</h2><p>${uitleg}</p>${!M.boss && M.pos ? '<p style="font-size:.88rem;color:#6b4a2b">Let op: je kunt daarna niet meer terug naar de andere paden.</p>' : ''}
     <div class="knoprij"><button class="knop accent" data-act="betreed" data-id="${id}">Betreden</button>${magSpringen ? `<button class="knop licht" data-act="spring" data-id="${id}">🦘 Overslaan met Sprong</button>` : ''}<button class="knop licht" data-act="sluit">Annuleren</button></div></div>`);
@@ -276,23 +299,23 @@ function vakjeVoltooid() {
     if (!M.fout && (n.t === 'opd' || n.t === 'elite' || n.t === 'event')) { M.reeks = (M.reeks || 0) + 1; verhoogd = true; } else if (M.fout) M.reeks = 0;
     if (M.boss) { geefXP(5, 'vrij spel'); }
     bewaar();
-    if (n.t === 'elite') return kiesBoon('Elite verslagen! Kies een boon.', () => naVoltooid(h), 3);
-    if (verhoogd && M.reeks % 3 === 0) return kiesBoon('Drie vakjes op rij zonder fout! Kies een boon.', () => naVoltooid(h), 2);
+    if (n.t === 'elite') return kiesBoon('Elite verslagen! Kies een blessing.', () => naVoltooid(h), 3);
+    if (verhoogd && M.reeks % 3 === 0) return kiesBoon('Drie vakjes op rij zonder fout! Kies een blessing.', () => naVoltooid(h), 2);
   }
   bewaar(); naVoltooid(h, beloningen);
 }
 function naVoltooid(h) { checkBadges(); bewaar(); sluitModal(); toast('✓ Vakje voltooid'); openKaart(h); }
 
-/* ---------- boons ---------- */
+/* ---------- blessings ---------- */
 function geefBoon(b) {
   const m = mapState();
-  if (m.boons.length >= MAXBOONS) { toast('Je boon-tas is vol (max. 3).'); return false; }
+  if (m.boons.length >= MAXBOONS) { toast('Je tas met blessings is vol (max. 3).'); return false; }
   m.boons.push(b); st.c.boons = (st.c.boons || 0) + 1; bewaar(); toast(`${BOONS[b].ic} ${BOONS[b].naam} gekregen`, 'badge'); return true;
 }
 function kiesBoon(titel, verder, aantal = 2) {
   const keys = Object.keys(BOONS); const opties = []; while (opties.length < Math.min(aantal, keys.length)) { const k = keys[Math.floor(Math.random() * keys.length)]; if (!opties.includes(k)) opties.push(k); }
   ui.naBoon = verder; const vol = mapState().boons.length >= MAXBOONS;
-  modal(`<div class="perkament-modal"><h2>${titel}</h2>${vol ? '<p class="melding info">Je tas is vol (max. 3 boons). Gebruik eerst een boon, of sla deze beloning over.</p>' : ''}
+  modal(`<div class="perkament-modal"><h2>${titel}</h2>${vol ? '<p class="melding info">Je tas is vol (max. 3 blessings). Gebruik eerst een blessing, of sla deze beloning over.</p>' : ''}
     <div class="boonkeuze">${opties.map(k => `<button class="boonkaart" data-act="boon-kies" data-b="${k}" ${vol ? 'disabled' : ''}><span class="bi">${BOONS[k].ic}</span><b>${BOONS[k].naam}</b><small>${BOONS[k].oms}</small></button>`).join('')}</div>
     <div class="knoprij" style="margin-top:10px"><button class="knop licht" data-act="boon-kies" data-b="">${vol ? 'Verder' : 'Overslaan'}</button></div></div>`);
 }
@@ -333,7 +356,7 @@ function startEvent(n) {
   if (soort === 'snel') { ui.ev = { soort, eind: Date.now() + 60000 }; ui.cur = variantVraag(par, '⏱️ SNELLE SOM · 60 SECONDEN'); renderEvent(); startEvTimer(); return; }
   if (soort === 'gok') {
     ui.ev = { soort };
-    return vakjeScherm(`<div class="kaart"><p class="groot">🎲 Een vreemdeling biedt je een gok aan.</p><p>Neem het zekere voor het onzekere en krijg <b>15 munten</b>. Of waag het: maak één som in één keer goed en kies een <b>boon</b>. Is je antwoord fout, dan kost het een hart.</p>
+    return vakjeScherm(`<div class="kaart"><p class="groot">🎲 Een vreemdeling biedt je een gok aan.</p><p>Neem het zekere voor het onzekere en krijg <b>15 munten</b>. Of waag het: maak één som in één keer goed en kies een <b>blessing</b>. Is je antwoord fout, dan kost het een hart.</p>
       <div class="knoprij"><button class="knop licht" data-act="gok" data-k="veilig">🪙 15 munten</button><button class="knop accent" data-act="gok" data-k="waag">🎲 Waag het!</button></div></div>`, 'Een gok');
   }
 }
@@ -370,9 +393,9 @@ function eventAntwoord(res) { // controleren in een event/schat/rust-som
 function eventVerder() {
   const ev = ui.ev || {}; const c = ui.cur || {}; const m = mapState();
   if (ev.soort === 'snel') { if (c.goedGedaan && !ev.tijdOm) { m.munten += 20; toast('🪙 +20 munten'); geefXP(6); } return vakjeVoltooid(); }
-  if (ev.soort === 'gok') { if (c.goedGedaan) { geefXP(6); return kiesBoon('Gewaagd en gewonnen! Kies een boon.', () => vakjeVoltooid(), 2); } return vakjeVoltooid(); }
-  if (ev.soort === 'schat') { geefXP(4); return kiesBoon('🧰 De kist gaat open! Kies een boon.', () => vakjeVoltooid(), 2); }
-  if (ev.soort === 'rust') { ev.n = (ev.n || 0) + 1; geefXP(4); if (ev.n < 2) { ui.cur = variantVraag(ev.par, `OEFENEN · SOM ${ev.n + 1}/2`); return renderEvent(); } return kiesBoon('🔥 Goed geoefend! Kies een boon.', () => vakjeVoltooid(), 2); }
+  if (ev.soort === 'gok') { if (c.goedGedaan) { geefXP(6); return kiesBoon('Gewaagd en gewonnen! Kies een blessing.', () => vakjeVoltooid(), 2); } return vakjeVoltooid(); }
+  if (ev.soort === 'schat') { geefXP(4); return kiesBoon('🧰 De kist gaat open! Kies een blessing.', () => vakjeVoltooid(), 2); }
+  if (ev.soort === 'rust') { ev.n = (ev.n || 0) + 1; geefXP(4); if (ev.n < 2) { ui.cur = variantVraag(ev.par, `OEFENEN · SOM ${ev.n + 1}/2`); return renderEvent(); } return kiesBoon('🔥 Goed geoefend! Kies een blessing.', () => vakjeVoltooid(), 2); }
   vakjeVoltooid();
 }
 function startSchat() {
@@ -384,12 +407,12 @@ function renderRust() {
   ui.ev = { soort: 'rust-keuze' };
   vakjeScherm(`<div class="kaart"><p class="groot">🔥 Je zit bij het kampvuur.</p><p>Kies één van beide:</p>
     <div class="grid2"><button class="boonkaart" data-act="rust" data-k="uitrusten" ${M.hp >= MAXHP ? 'disabled' : ''}><span class="bi">❤️</span><b>Uitrusten</b><small>+2 harten (je hebt er nu ${M.hp} van de ${MAXHP}).</small></button>
-    <button class="boonkaart" data-act="rust" data-k="oefenen"><span class="bi">🏋️</span><b>Oefenen</b><small>Maak 2 sommen goed en kies een boon.</small></button></div>
+    <button class="boonkaart" data-act="rust" data-k="oefenen"><span class="bi">🏋️</span><b>Oefenen</b><small>Maak 2 sommen goed en kies een blessing.</small></button></div>
     <p style="margin-top:14px"><button class="link" data-act="kaart-theorie" data-h="${h}">📖 Lees hier ook de theorie van § ${bandPar(h, n.r)}</button></p></div>`, 'Rustplaats');
 }
 function renderWinkel() {
   const m = mapState(); const M = m[ui.node.h]; ui.ev = { soort: 'winkel' };
-  vakjeScherm(`<div class="kaart"><p class="groot">🛒 "Welkom, reiziger! Wat mag het zijn?"</p><p>Je hebt <b>🪙 ${m.munten}</b> munten en ${m.boons.length}/${MAXBOONS} boons.</p>
+  vakjeScherm(`<div class="kaart"><p class="groot">🛒 "Welkom, reiziger! Wat mag het zijn?"</p><p>Je hebt <b>🪙 ${m.munten}</b> munten en ${m.boons.length}/${MAXBOONS} blessings.</p>
     <div class="winkel">${Object.entries(BOONS).map(([k, b]) => `<button class="boonkaart" data-act="koop" data-b="${k}" ${m.munten < b.prijs || m.boons.length >= MAXBOONS ? 'disabled' : ''}><span class="bi">${b.ic}</span><b>${b.naam}</b><small>${b.oms}</small><span class="prijs">🪙 ${b.prijs}</span></button>`).join('')}
     <button class="boonkaart" data-act="koop" data-b="hart" ${m.munten < 20 || M.hp >= MAXHP ? 'disabled' : ''}><span class="bi">❤️</span><b>Hart</b><small>Eén hart erbij (max. ${MAXHP}).</small><span class="prijs">🪙 20</span></button></div>
     <div class="knoprij" style="margin-top:14px"><button class="knop accent" data-act="winkel-uit">Verder reizen →</button></div></div>`, 'Winkel');
@@ -418,8 +441,9 @@ Object.assign(ACT, {
   'boon-info': el => { const b = BOONS[el.dataset.b]; modal(`<div class="perkament-modal"><h2>${b.ic} ${b.naam}</h2><p>${b.oms}</p>${el.dataset.b === 'klaver' ? `<div class="knoprij"><button class="knop accent" data-act="klaver-aan">Nu activeren</button><button class="knop licht" data-act="sluit">Sluiten</button></div>` : '<button class="knop licht" data-act="sluit">Sluiten</button>'}</div>`); },
   'klaver-aan': () => { const m = mapState(); const i = m.boons.indexOf('klaver'); if (i >= 0 && !m.klaver) { m.boons.splice(i, 1); m.klaver = true; bewaar(); toast('🍀 Klavertje actief voor je volgende opdracht'); } sluitModal(); hudVernieuw(); },
   'boon-kies': el => { const b = el.dataset.b; if (b) geefBoon(b); sluitModal(); const f = ui.naBoon; ui.naBoon = null; if (f) f(); },
+  'legenda-toggle': () => { const el = $('#legendaPaneel'); if (!el) return; const dicht = !el.classList.contains('dicht'); el.classList.toggle('dicht', dicht); try { localStorage.setItem('rk_legenda', dicht ? 'dicht' : 'open'); } catch (e) { /* */ } const k = el.querySelector('.legenda-kop'); k.setAttribute('aria-expanded', !dicht); k.querySelector('.pijl').textContent = dicht ? '◂' : '▾'; },
   'legenda': () => modal(`<div class="perkament-modal"><h2>Legenda</h2><ul class="legenda">${Object.values(VT).map(v => `<li><span>${v.ic}</span>${v.naam}</li>`).join('')}<li><span style="color:#b3261e;font-weight:bold">✕</span>Jouw plek</li><li><span>◯</span>Voltooid</li><li><span>🦘</span>Overgeslagen</li></ul>
-    <h3>Boons</h3><ul class="legenda">${Object.values(BOONS).map(b => `<li><span>${b.ic}</span><b>${b.naam}</b>: ${b.oms}</li>`).join('')}</ul><button class="knop licht" data-act="sluit">Sluiten</button></div>`),
+    <h3>Blessings</h3><ul class="legenda">${Object.values(BOONS).map(b => `<li><span>${b.ic}</span><b>${b.naam}</b>: ${b.oms}</li>`).join('')}</ul><button class="knop licht" data-act="sluit">Sluiten</button></div>`),
   'kaart-theorie': el => { const h = el.dataset.h; const pars = PAR.filter(p => p.h === (h === 'h1' ? 1 : 2)); ui.thTab = ui.thTab && pars.some(p => p.id === ui.thTab) ? ui.thTab : pars[0].id; toonTheorie(h); },
   'th-tab': el => { ui.thTab = el.dataset.id; toonTheorie(el.dataset.h); },
   'krant': el => {

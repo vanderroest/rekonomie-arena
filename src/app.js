@@ -202,7 +202,7 @@ const BADGES = [
   ['pp', '📐', 'Procentpuntpurist', '5 keer procent en procentpunt goed', s => (s.c.tags.pp || 0) >= 5],
   ['reeks10', '🔥', 'Op dreef', '10 keer achter elkaar in één keer goed', s => s.c.best >= 10],
   ['trainer', '🏋️', 'Trainingsbeest', '25 trainingsvragen goed', s => s.c.trgoed >= 25],
-  ['boons', '🎒', 'Verzamelaar', '5 boons verdiend of gekocht', s => (s.c.boons || 0) >= 5],
+  ['boons', '🎒', 'Verzamelaar', '5 blessings verdiend of gekocht', s => (s.c.boons || 0) >= 5],
   ['ongeschonden', '🛡️', 'Ongeschonden', 'Een eindbaas verslagen zonder fout', s => !!s.c.ongeschonden],
   ['ontdekker', '🧭', 'Ontdekkingsreiziger', 'Alle vakjes van een kaart bezocht', s => !!s.m && ['h1', 'h2'].some(h => s.m[h] && KAARTEN[h].nodes.every(n => s.m[h].done[n.id] === 'klaar'))],
   ['boss1', '🐉', 'Drakendoder', 'Eindbaas van hoofdstuk 1 verslagen', s => !!(s.m && s.m.h1 && s.m.h1.boss)],
@@ -310,7 +310,7 @@ function schermHome() {
   <details class="kaart"><summary style="font-weight:700;cursor:pointer">Hoe werkt het?</summary>
     <ul style="margin-bottom:0">
       <li>Elk hoofdstuk is een <b>kaart</b>. Je begint onderaan en kiest steeds een vakje dat met een pad verbonden is. Bovenaan wacht de <b>eindbaas</b>: de zelftest.</li>
-      <li>⚔️ Opdracht uit het boekje · 💀 Elite (pittig, dubbele munten en een boon) · ❓ Onbekend · 🧰 Schatkist · 🔥 Rustplaats · 🛒 Winkel.</li>
+      <li>⚔️ Opdracht uit het boekje · 💀 Elite (pittig, dubbele munten en een blessing) · ❓ Onbekend · 🧰 Schatkist · 🔥 Rustplaats · 🛒 Winkel.</li>
       <li>Je hebt <b>5 harten</b>. Een fout antwoord kost een hart. Zijn ze op? Dan lees je eerst de theorie en ga je verder met 3 harten.</li>
       <li>Met <b>munten</b> koop je in de winkel boons: 🦘 Sprong (vakje overslaan), 🛡️ Schild, 💡 Lampje (gratis hint) en 🍀 Klavertje (dubbele munten). Je kunt er maximaal 3 bij je hebben.</li>
       <li>Versla je de eindbaas, dan opent de volgende kaart en mag je in <b>vrij spel</b> alle andere vakjes nog bezoeken.</li>
