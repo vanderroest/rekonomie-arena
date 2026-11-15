@@ -7,6 +7,7 @@ const { PAR, genereer } = RK; const { fmt, r } = RK.util; const E = RK.engine;
 const CFG = {
   url: 'https://sislandwzwhxldcjqnxq.supabase.co',
   key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpc2xhbmR3endoeGxkY2pxbnhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0MTA0ODMsImV4cCI6MjEwODk4NjQ4M30.EuGCwkBd_JkedOekyim-9VVQCv81q_aV01HaTVNirhM',
+  klassen: ['4V1', '4V2', '4V3'],   // keuzelijst klascode (pas hier aan)
   logo: 'https://www.kennemerlyceum.nl/wp-content/themes/kennemerlyceum2025/public/images/kennemer_lyceum_logo.7152d6.svg'
 };
 const DEMO = /[?&]demo\b/.test(location.search);
@@ -157,7 +158,7 @@ const TEAMS = { 1: 'Team Duin', 2: 'Team Bos', 3: 'Team Zee', 4: 'Team Strand' }
 let S = null;            // sessie {klas, naam, pin}
 let st = null;           // voortgang
 const ui = {};           // schermstaat
-const leegState = () => ({ v: 1, t: 0, xp: 0, q: {}, tr: {}, un: {}, bd: {}, fs: {}, c: { goed: 0, fout: 0, hint: 0, trgoed: 0, streak: 0, best: 0, tags: {}, par: {} } });
+const leegState = () => ({ v: 1, t: 0, xp: 0, tour: {}, q: {}, tr: {}, un: {}, bd: {}, fs: {}, c: { goed: 0, fout: 0, hint: 0, trgoed: 0, streak: 0, best: 0, tags: {}, par: {} } });
 function normState(x) { const b = leegState(); x = x && typeof x === 'object' ? x : {}; for (const k in b) if (x[k] === undefined) x[k] = b[k]; for (const k in b.c) if (x.c[k] === undefined) x.c[k] = b.c[k]; return x; }
 const localKey = () => 'rk_local_lln_' + S.lln;
 
@@ -276,7 +277,7 @@ function schermNieuw(lln, pin, melding) {
     <h2 style="text-align:center;color:var(--kl-blauw)">Welkom! 👋</h2>
     <p style="text-align:center;margin-top:-4px">Leerlingnummer <b>${esc(lln)}</b> is nieuw. Maak je account af.</p>
     <form id="nieuwForm" autocomplete="off">
-      <label class="veld">Klascode (van je docent)<input id="nKlas" required maxlength="12" autocapitalize="characters" placeholder="bijv. 4V2"></label>
+      <label class="veld">Klas<select id="nKlas" required><option value="">Kies je klas…</option>${CFG.klassen.map(k => `<option value="${k}">${k}</option>`).join('')}</select></label>
       <label class="veld">Je naam (zichtbaar in de ranglijst)<input id="nNaam" required maxlength="40" placeholder="bijv. Sanne de Vries" autocomplete="name"></label>
       <label class="veld">Herhaal je pincode<input id="nPin" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" placeholder="••••"></label>
       <button class="knop accent vol" type="submit">Account aanmaken</button>
@@ -286,6 +287,7 @@ function schermNieuw(lln, pin, melding) {
   $('#nieuwForm').addEventListener('submit', async e => {
     e.preventDefault();
     const klas = $('#nKlas').value.trim().toUpperCase(), naam = $('#nNaam').value.trim().replace(/\s+/g, ' ');
+    if (!klas) return schermNieuw(lln, pin, 'Kies je klas.');
     if ($('#nPin').value.trim() !== pin) return schermNieuw(lln, pin, 'De pincodes zijn niet gelijk. Probeer het opnieuw.');
     const knop = e.target.querySelector('button'); knop.disabled = true; knop.textContent = 'Bezig…';
     try {
@@ -348,14 +350,15 @@ function schermHome() {
       <li>Met <b>munten</b> koop je in de winkel boons: 🦘 Sprong (vakje overslaan), 🛡️ Schild, 💡 Lampje (gratis hint) en 🍀 Klavertje (dubbele munten). Je kunt er maximaal 3 bij je hebben.</li>
       <li>Versla je de eindbaas, dan opent de volgende kaart en mag je in <b>vrij spel</b> alle andere vakjes nog bezoeken.</li>
       <li>Typ getallen zoals je gewend bent: <b>1.250,75</b> · <b>-2,9</b> · <b>588,7 miljard</b>, en kies de juiste eenheid.</li>
-    </ul></details>
+    </ul><button class="knop licht klein" data-act="tour-opnieuw" data-t="home" style="margin-top:8px">▶ Rondleiding opnieuw bekijken</button></details>
   <h2 class="kamerkop">🏋️ Oefenruimte</h2>
-  <div class="kaart"><p style="margin-top:0;color:var(--zacht)">Theorie en eindeloze training per paragraaf, met steeds nieuwe getallen. Telt mee voor XP, niet voor de kaart.</p>
+  <div class="kaart oefenruimte"><p style="margin-top:0;color:var(--zacht)">Theorie en eindeloze training per paragraaf, met steeds nieuwe getallen. Telt mee voor XP, niet voor de kaart.</p>
     <div class="knoprij">${PAR.map(p => `<button class="knop licht klein" data-act="open-par" data-id="${p.id}">§ ${p.id} ${esc(p.titel)}</button>`).join('')}</div></div>
   <div style="text-align:center"><button class="link" data-act="uitloggen">Uitloggen</button></div>
   </main>`;
   zetOpslag(saveState);
   laadTop10();
+  tourNa('home', 900);
 }
 async function haalRanglijst() {
   if (dirty) await flush();          // eigen XP eerst opslaan, dan klopt de ranglijst
@@ -398,6 +401,7 @@ function renderPar() {
     <nav class="tabs">${[['theorie', '📖 Theorie'], ['training', '🏋️ Training']].map(([t, l]) => `<button class="${ui.tab === t ? 'actief' : ''}" data-act="tab" data-tab="${t}">${l}</button>`).join('')}</nav>
     ${inhoud}</main>`;
   zetOpslag(saveState);
+  tourNa('oefen');
   const inp = $('#ant'); if (inp && !('ontouchstart' in window)) inp.focus();
 }
 
@@ -776,7 +780,7 @@ function strijdSetup(melding) {
   ui.scherm = 'docent'; stopHost();
   app().innerHTML = docentKop('s') + `<main class="wrap"><div class="kaart"><h2>⚔️ Nieuwe klassikale strijd</h2>${melding ? `<div class="melding fout">${esc(melding)}</div>` : ''}
     <div class="grid2"><div>
-      <label class="veld">Klas<input id="sKlas" value="${esc(D.klas || '')}" maxlength="12" placeholder="bijv. 4V2"></label>
+      <label class="veld">Klas<select id="sKlas">${[...new Set(CFG.klassen.concat(D.klassen || []))].map(k => `<option ${k === D.klas ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>
       <label class="veld">Aantal vragen<select id="sAantal"><option>5</option><option selected>8</option><option>10</option><option>15</option></select></label>
       <label class="veld">Tijd per vraag<select id="sTijd"><option value="30">30 seconden</option><option value="45">45 seconden</option><option value="60" selected>60 seconden</option><option value="90">90 seconden</option><option value="120">2 minuten</option></select></label>
       <label class="veld">Spelvorm<select id="sMode"><option value="solo">Ieder voor zich</option><option value="teams">Teams (Duin · Bos · Zee · Strand)</option><option value="docent">Klas tegen docent</option></select></label>

@@ -209,6 +209,7 @@ function openKaart(h, scrollNaarPos = true) {
     if (rol && doel) { const r = doel.getBoundingClientRect(); rol.scrollTop += r.top - rol.getBoundingClientRect().top - rol.clientHeight * 0.55; }
     else if (rol) rol.scrollTop = rol.scrollHeight;
   });
+  tourNa('kaart', 700);
 }
 function kiesVakje(id) {
   const h = ui.h; const m = mapState(); const M = m[h]; const n = nodeVan(h, id);
@@ -255,6 +256,7 @@ function renderOpdrachtVakje() {
   const x = opdrachtVan(n.ref); ui.par = x.par;
   if (!ui.qid || !vr.some(q => q.id === ui.qid) || isKlaar(vr.find(q => q.id === ui.qid))) ui.qid = (vr.find(q => !isKlaar(q)) || vr[0]).id;
   vakjeScherm(opdrachtInhoud(vr), `Opdracht ${n.ref} <small>· Rekonomie blz. ${x.o.p}</small>`);
+  tourNa('opdracht');
 }
 function opdrachtInhoud(vr) {
   const q = vr.find(v => v.id === ui.qid) || vr[0];
@@ -328,6 +330,7 @@ function renderBoss() {
   if (!ui.qid || !vr.some(q => q.id === ui.qid) || isKlaar(vr.find(q => q.id === ui.qid))) ui.qid = (vr.find(q => !isKlaar(q)) || vr[0]).id;
   const totaal = K.boss.rondes.length; const klaarVr = vr.filter(isKlaar).length;
   const hp = Math.round(100 * ((totaal - M.ronde) - klaarVr / vr.length) / totaal);
+  tourNa('boss');
   vakjeScherm(`<div class="bossbalk"><div class="bossnaam">🐉 ${esc(K.boss.naam)} · ronde ${M.ronde + 1}/${totaal}</div><div class="hpbalk"><div style="width:${hp}%"></div></div></div>` + opdrachtInhoud(vr), `Eindbaas: zelftest`);
 }
 function bossRondeKlaar() {
@@ -350,6 +353,7 @@ function startEvent(n) {
   if (soort === 'krant') {
     const lijst = KRANT[h]; const k = lijst[(n.r + n.id.charCodeAt(0)) % lijst.length];
     ui.ev = { soort, k };
+    tourNa('krant');
     return vakjeScherm(`<div class="kaart"><div class="krant"><div class="krantkop">📰 Klopt dit?</div><p>${k.tekst}</p></div>
       <div class="knoprij"><button class="knop groen" data-act="krant" data-a="1">Klopt</button><button class="knop" data-act="krant" data-a="0">Klopt niet</button></div><div id="evfb"></div></div>`, 'Klopt dit krantenbericht?');
   }
@@ -400,7 +404,7 @@ function eventVerder() {
 }
 function startSchat() {
   const h = ui.node.h; const n = nodeVan(h, ui.node.id);
-  ui.ev = { soort: 'schat' }; ui.cur = variantVraag(bandPar(h, n.r), '🗝️ DE SLEUTEL: MAAK DEZE SOM'); renderEvent();
+  ui.ev = { soort: 'schat' }; ui.cur = variantVraag(bandPar(h, n.r), '🗝️ DE SLEUTEL: MAAK DEZE SOM'); renderEvent(); tourNa('schat');
 }
 function renderRust() {
   const h = ui.node.h; const n = nodeVan(h, ui.node.id); const M = mapState()[h];
@@ -409,6 +413,7 @@ function renderRust() {
     <div class="grid2"><button class="boonkaart" data-act="rust" data-k="uitrusten" ${M.hp >= MAXHP ? 'disabled' : ''}><span class="bi">❤️</span><b>Uitrusten</b><small>+2 harten (je hebt er nu ${M.hp} van de ${MAXHP}).</small></button>
     <button class="boonkaart" data-act="rust" data-k="oefenen"><span class="bi">🏋️</span><b>Oefenen</b><small>Maak 2 sommen goed en kies een blessing.</small></button></div>
     <p style="margin-top:14px"><button class="link" data-act="kaart-theorie" data-h="${h}">📖 Lees hier ook de theorie van § ${bandPar(h, n.r)}</button></p></div>`, 'Rustplaats');
+  tourNa('rust');
 }
 function renderWinkel() {
   const m = mapState(); const M = m[ui.node.h]; ui.ev = { soort: 'winkel' };
@@ -416,6 +421,7 @@ function renderWinkel() {
     <div class="winkel">${Object.entries(BOONS).map(([k, b]) => `<button class="boonkaart" data-act="koop" data-b="${k}" ${m.munten < b.prijs || m.boons.length >= MAXBOONS ? 'disabled' : ''}><span class="bi">${b.ic}</span><b>${b.naam}</b><small>${b.oms}</small><span class="prijs">🪙 ${b.prijs}</span></button>`).join('')}
     <button class="boonkaart" data-act="koop" data-b="hart" ${m.munten < 20 || M.hp >= MAXHP ? 'disabled' : ''}><span class="bi">❤️</span><b>Hart</b><small>Eén hart erbij (max. ${MAXHP}).</small><span class="prijs">🪙 20</span></button></div>
     <div class="knoprij" style="margin-top:14px"><button class="knop accent" data-act="winkel-uit">Verder reizen →</button></div></div>`, 'Winkel');
+  tourNa('winkel');
 }
 
 /* ---------- kaartenkamer (startscherm) ---------- */
@@ -443,7 +449,7 @@ Object.assign(ACT, {
   'boon-kies': el => { const b = el.dataset.b; if (b) geefBoon(b); sluitModal(); const f = ui.naBoon; ui.naBoon = null; if (f) f(); },
   'legenda-toggle': () => { const el = $('#legendaPaneel'); if (!el) return; const dicht = !el.classList.contains('dicht'); el.classList.toggle('dicht', dicht); try { localStorage.setItem('rk_legenda', dicht ? 'dicht' : 'open'); } catch (e) { /* */ } const k = el.querySelector('.legenda-kop'); k.setAttribute('aria-expanded', !dicht); k.querySelector('.pijl').textContent = dicht ? '◂' : '▾'; },
   'legenda': () => modal(`<div class="perkament-modal"><h2>Legenda</h2><ul class="legenda">${Object.values(VT).map(v => `<li><span>${v.ic}</span>${v.naam}</li>`).join('')}<li><span style="color:#b3261e;font-weight:bold">✕</span>Jouw plek</li><li><span>◯</span>Voltooid</li><li><span>🦘</span>Overgeslagen</li></ul>
-    <h3>Blessings</h3><ul class="legenda">${Object.values(BOONS).map(b => `<li><span>${b.ic}</span><b>${b.naam}</b>: ${b.oms}</li>`).join('')}</ul><button class="knop licht" data-act="sluit">Sluiten</button></div>`),
+    <h3>Blessings</h3><ul class="legenda">${Object.values(BOONS).map(b => `<li><span>${b.ic}</span><b>${b.naam}</b>: ${b.oms}</li>`).join('')}</ul><div class="knoprij"><button class="knop accent" data-act="tour-opnieuw" data-t="kaart">▶ Rondleiding kaart opnieuw</button><button class="knop licht" data-act="sluit">Sluiten</button></div></div>`),
   'kaart-theorie': el => { const h = el.dataset.h; const pars = PAR.filter(p => p.h === (h === 'h1' ? 1 : 2)); ui.thTab = ui.thTab && pars.some(p => p.id === ui.thTab) ? ui.thTab : pars[0].id; toonTheorie(h); },
   'th-tab': el => { ui.thTab = el.dataset.id; toonTheorie(el.dataset.h); },
   'krant': el => {
