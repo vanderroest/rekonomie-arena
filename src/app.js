@@ -16,7 +16,7 @@ const API = {
   async call(fn, args) {
     if (DEMO) return Mock[fn](args);
     const res = await fetch(`${CFG.url}/rest/v1/rpc/${fn}`, {
-      method: 'POST', keepalive: fn === 'rk_save',
+      method: 'POST', keepalive: fn === 'rk_opslaan',
       headers: { 'Content-Type': 'application/json', apikey: CFG.key, Authorization: 'Bearer ' + CFG.key },
       body: JSON.stringify(args)
     });
@@ -36,26 +36,34 @@ const Mock = (() => {
   const pub = q => { const c = Object.assign({}, q); delete c.accept; delete c.juist; delete c.uitleg; delete c.fouten; delete c.antwoordTekst; return c; };
   const isOk = (q, w, k) => q.type === 'mc' ? (k != null && k === q.juist) : (w != null && q.accept.some(a => Math.abs(w - a.v) <= a.t));
   return {
-    rk_login({ p_klas, p_naam, p_pin }) {
-      const db = load(); const k = String(p_klas || '').trim().toUpperCase(); const nk = key(p_naam);
-      if (!k || k.length > 12) return { status: 'error', msg: 'Klascode ongeldig' };
-      if (nk.length < 2 || nk.length > 40) return { status: 'error', msg: 'Naam moet 2 tot 40 tekens zijn' };
-      if (!/^\d{4}$/.test(p_pin || '')) return { status: 'error', msg: 'Pincode moet uit 4 cijfers bestaan' };
-      const r0 = db.s[sk(k, nk)];
-      if (!r0) { db.s[sk(k, nk)] = { klas: k, naam: String(p_naam).trim(), pin: p_pin, state: {}, xp: 0, updated_at: new Date().toISOString() }; save(db); return { status: 'new', naam: String(p_naam).trim(), klas: k, state: {} }; }
-      if (r0.pin === '') { r0.pin = p_pin; save(db); return { status: 'ok', naam: r0.naam, klas: k, state: r0.state, pinreset: true }; }
-      if (r0.pin !== p_pin) return { status: 'badpin' };
-      return { status: 'ok', naam: r0.naam, klas: k, state: r0.state };
+    rk_inloggen({ p_lln, p_pin, p_klas, p_naam }) {
+      const db = load(); const l = String(p_lln || '').trim(); const k = String(p_klas || '').trim().toUpperCase(); const nm = String(p_naam || '').trim().replace(/\s+/g, ' ');
+      if (!/^\d{3,10}$/.test(l)) return { status: 'error', msg: 'Een leerlingnummer bestaat uit 3 tot 10 cijfers' };
+      if (!/^\d{4}$/.test(p_pin || '')) return { status: 'error', msg: 'De pincode moet uit 4 cijfers bestaan' };
+      const r0 = Object.values(db.s).find(x => x.lln === l);
+      if (!r0) {
+        if (!k || !nm) return { status: 'nieuw' };
+        if (k.length > 12) return { status: 'error', msg: 'Klascode is te lang (max. 12 tekens)' };
+        if (nm.length < 2 || nm.length > 40) return { status: 'error', msg: 'Naam moet 2 tot 40 tekens zijn' };
+        const id = 'id' + Date.now() + Math.random().toString(36).slice(2, 6);
+        db.s[id] = { id, lln: l, klas: k, naam: nm, pin: p_pin, fails: 0, state: {}, xp: 0, updated_at: new Date().toISOString(), created_at: new Date().toISOString() }; save(db);
+        return { status: 'new', lln: l, naam: nm, klas: k, state: {} };
+      }
+      if (r0.pin === '') { r0.pin = p_pin; r0.fails = 0; save(db); return { status: 'ok', lln: l, naam: r0.naam, klas: r0.klas, state: r0.state, pinreset: true }; }
+      if ((r0.fails || 0) >= 10) return { status: 'geblokkeerd' };
+      if (r0.pin !== p_pin) { r0.fails = (r0.fails || 0) + 1; save(db); return { status: 'badpin' }; }
+      r0.fails = 0; save(db); return { status: 'ok', lln: l, naam: r0.naam, klas: r0.klas, state: r0.state };
     },
-    rk_save({ p_klas, p_naam, p_pin, p_state, p_xp }) {
-      const db = load(); const r0 = db.s[sk(p_klas, p_naam)]; if (!r0 || r0.pin !== p_pin || !p_pin) return false;
+    rk_opslaan({ p_lln, p_pin, p_state, p_xp }) {
+      const db = load(); const r0 = Object.values(db.s).find(x => x.lln === String(p_lln).trim()); if (!r0 || r0.pin !== p_pin || !p_pin || r0.fails >= 10) return false;
       r0.state = p_state; r0.xp = p_xp; r0.updated_at = new Date().toISOString(); save(db); return true;
     },
-    rk_ranglijst({ p_klas }) { const db = load(); return Object.values(db.s).filter(s => s.klas === String(p_klas).toUpperCase()).map(s => ({ naam: s.naam, xp: s.xp })).sort((a, b) => b.xp - a.xp || a.naam.localeCompare(b.naam)); },
+    rk_ranglijst2({ p_klas, p_lln }) { const db = load(); return Object.values(db.s).filter(s => s.klas === String(p_klas).toUpperCase()).map(s => ({ naam: s.naam, xp: s.xp, ik: s.lln === p_lln })).sort((a, b) => b.xp - a.xp || a.naam.localeCompare(b.naam)); },
     rk_docent_login({ p_pw }) { const db = load(); if (p_pw !== db.pw) return { ok: false }; return { ok: true, klassen: [...new Set(Object.values(db.s).map(s => s.klas))].sort() }; },
-    rk_docent_overzicht({ p_pw, p_klas }) { const db = load(); if (p_pw !== db.pw) return null; return Object.values(db.s).filter(s => s.klas === String(p_klas).toUpperCase()).map(s => ({ naam: s.naam, xp: s.xp, state: s.state, updated_at: s.updated_at, pinreset: s.pin === '' })).sort((a, b) => a.naam.localeCompare(b.naam)); },
-    rk_docent_reset_pin({ p_pw, p_klas, p_naam }) { const db = load(); if (p_pw !== db.pw) return false; const r0 = db.s[sk(p_klas, p_naam)]; if (!r0) return false; r0.pin = ''; save(db); return true; },
-    rk_docent_verwijder({ p_pw, p_klas, p_naam }) { const db = load(); if (p_pw !== db.pw) return false; delete db.s[sk(p_klas, p_naam)]; save(db); return true; },
+    rk_docent_overzicht({ p_pw, p_klas }) { const db = load(); if (p_pw !== db.pw) return null; return Object.values(db.s).filter(s => s.klas === String(p_klas).toUpperCase()).map(s => ({ id: s.id, lln: s.lln, naam: s.naam, xp: s.xp, state: s.state, updated_at: s.updated_at, pinreset: s.pin === '', geblokkeerd: s.fails >= 10 })).sort((a, b) => a.naam.localeCompare(b.naam)); },
+    rk_docent_accounts({ p_pw }) { const db = load(); if (p_pw !== db.pw) return null; return Object.values(db.s).map(s => ({ id: s.id, lln: s.lln, naam: s.naam, klas: s.klas, xp: s.xp, updated_at: s.updated_at, created_at: s.created_at, pinreset: s.pin === '', geblokkeerd: s.fails >= 10 })).sort((a, b) => a.klas.localeCompare(b.klas) || a.naam.localeCompare(b.naam)); },
+    rk_docent_pinreset({ p_pw, p_id }) { const db = load(); if (p_pw !== db.pw || !db.s[p_id]) return false; db.s[p_id].pin = ''; db.s[p_id].fails = 0; save(db); return true; },
+    rk_docent_verwijderen({ p_pw, p_ids }) { const db = load(); if (p_pw !== db.pw) return 0; let n = 0; for (const id of p_ids) if (db.s[id]) { delete db.s[id]; n++; } save(db); return n; },
     rk_game_create({ p_pw, p_klas, p_mode, p_questions, p_duration }) {
       const db = load(); if (p_pw !== db.pw) return { ok: false, msg: 'Wachtwoord onjuist' };
       let c; do { c = String(1000 + Math.floor(Math.random() * 9000)); } while (db.g[c]);
@@ -151,7 +159,7 @@ let st = null;           // voortgang
 const ui = {};           // schermstaat
 const leegState = () => ({ v: 1, t: 0, xp: 0, q: {}, tr: {}, un: {}, bd: {}, fs: {}, c: { goed: 0, fout: 0, hint: 0, trgoed: 0, streak: 0, best: 0, tags: {}, par: {} } });
 function normState(x) { const b = leegState(); x = x && typeof x === 'object' ? x : {}; for (const k in b) if (x[k] === undefined) x[k] = b[k]; for (const k in b.c) if (x.c[k] === undefined) x.c[k] = b.c[k]; return x; }
-const localKey = () => 'rk_local_' + S.klas + '_' + nkey(S.naam);
+const localKey = () => 'rk_local_lln_' + S.lln;
 
 let saveTimer = null, saveState = 'ok', dirty = false;
 function bewaar() {
@@ -163,7 +171,7 @@ async function flush() {
   if (!S || !dirty) return;
   clearTimeout(saveTimer);
   try {
-    const ok = await API.call('rk_save', { p_klas: S.klas, p_naam: S.naam, p_pin: S.pin, p_state: st, p_xp: st.xp });
+    const ok = await API.call('rk_opslaan', { p_lln: S.lln, p_pin: S.pin, p_state: st, p_xp: st.xp });
     if (ok === true) { dirty = false; zetOpslag('ok'); }
     else { zetOpslag('fout'); toast('Opslaan geweigerd: log opnieuw in.', ''); }
   } catch (e) { zetOpslag('offline'); }
@@ -232,58 +240,83 @@ function kop() {
 }
 
 /* ================= LOGIN ================= */
-function schermLogin(melding) {
-  const laatst = JSON.parse(localStorage.getItem('rk_laatst') || '{}');
-  app().innerHTML = `<div class="login-scherm"><div class="login-kaart">
-    <img class="logo-groot" src="${CFG.logo}" alt="Kennemer Lyceum" onerror="this.outerHTML='<div style=&quot;text-align:center;font-weight:800;color:#12355b;letter-spacing:.04em&quot;>KENNEMER LYCEUM</div>'">
+function loginKop(melding) {
+  return `<img class="logo-groot" src="${CFG.logo}" alt="Kennemer Lyceum" onerror="this.outerHTML='<div style=&quot;text-align:center;font-weight:800;color:#12355b;letter-spacing:.04em&quot;>KENNEMER LYCEUM</div>'">
     <h1>Rekonomie Arena</h1><p class="ondertitel">Hoofdstuk 1 en 2 · rekenen en procenten · 4 vwo</p>
     ${DEMO ? '<div class="melding info">Demomodus: gegevens blijven alleen in deze browser.</div>' : ''}
-    ${melding ? `<div class="melding fout">${esc(melding)}</div>` : ''}
+    ${melding ? `<div class="melding fout">${esc(melding)}</div>` : ''}`;
+}
+function schermLogin(melding) {
+  let laatst = {}; try { laatst = JSON.parse(localStorage.getItem('rk_laatst') || '{}'); } catch (e) { /* */ }
+  app().innerHTML = `<div class="login-scherm"><div class="login-kaart">${loginKop(melding)}
     <form id="loginForm" autocomplete="off">
-      <label class="veld">Klascode<input id="lKlas" required maxlength="12" autocapitalize="characters" value="${esc(laatst.klas || '')}" placeholder="bijv. 4V2"></label>
-      <label class="veld">Voor- en achternaam<input id="lNaam" required maxlength="40" value="${esc(laatst.naam || '')}" placeholder="bijv. Sanne de Vries" autocomplete="name"></label>
-      <label class="veld">Pincode (4 cijfers)<input id="lPin" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" placeholder="••••"></label>
-      <p style="font-size:.82rem;color:var(--zacht);margin:-4px 0 12px">De eerste keer kies je zelf een pincode. Onthoud hem goed: je hebt hem nodig om verder te gaan op een ander apparaat.</p>
-      <button class="knop accent vol" type="submit">Start</button>
+      <label class="veld">Leerlingnummer<input id="lLln" required inputmode="numeric" pattern="[0-9]{3,10}" maxlength="10" value="${esc(laatst.lln || '')}" placeholder="bijv. 123456" autocomplete="username"></label>
+      <label class="veld">Pincode (4 cijfers)<input id="lPin" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" placeholder="••••" autocomplete="current-password"></label>
+      <p style="font-size:.82rem;color:var(--zacht);margin:-4px 0 12px">De eerste keer kies je zelf een pincode van 4 cijfers. Onthoud hem goed: je hebt hem nodig om in te loggen op een ander apparaat.</p>
+      <button class="knop accent vol" type="submit">Inloggen</button>
     </form>
     <p class="slogan">Ondernemend de wereld in!</p>
     <div style="text-align:center"><button class="link" data-act="docent-login">Docent</button></div>
   </div></div>`;
   $('#loginForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const klas = $('#lKlas').value.trim().toUpperCase(), naam = $('#lNaam').value.trim().replace(/\s+/g, ' '), pin = $('#lPin').value.trim();
+    const lln = $('#lLln').value.trim(), pin = $('#lPin').value.trim();
+    if (!/^\d{3,10}$/.test(lln)) return schermLogin('Vul je leerlingnummer in (alleen cijfers).');
     if (!/^\d{4}$/.test(pin)) return schermLogin('De pincode moet uit precies 4 cijfers bestaan.');
     const knop = e.target.querySelector('button'); knop.disabled = true; knop.textContent = 'Bezig…';
     try {
-      const res = await API.call('rk_login', { p_klas: klas, p_naam: naam, p_pin: pin });
-      if (res.status === 'badpin') return schermLogin('Deze pincode hoort niet bij deze naam. Vraag je docent om je pincode te resetten als je hem kwijt bent.');
-      if (res.status === 'error') return schermLogin(res.msg);
-      S = { klas: res.klas, naam: res.naam, pin };
-      localStorage.setItem('rk_sessie', JSON.stringify(S)); localStorage.setItem('rk_laatst', JSON.stringify({ klas: res.klas, naam: res.naam }));
-      let server = normState(res.state || {}); let lokaal = null;
-      try { lokaal = JSON.parse(localStorage.getItem(localKey())); } catch (er) { /* */ }
-      st = lokaal && lokaal.t > (server.t || 0) ? normState(lokaal) : server;
-      if (lokaal && lokaal.t > (server.t || 0)) bewaar();
-      if (res.status === 'new') toast('Welkom, ' + esc(res.naam) + '! Je account is aangemaakt.', '');
-      if (res.pinreset) toast('Je nieuwe pincode is opgeslagen.', '');
-      schermHome();
+      const res = await API.call('rk_inloggen', { p_lln: lln, p_pin: pin, p_klas: '', p_naam: '' });
+      if (res.status === 'nieuw') return schermNieuw(lln, pin);
+      verwerkLogin(res, lln, pin);
     } catch (er) { schermLogin('Geen verbinding met de server. Controleer je internet en probeer het opnieuw.'); }
   });
 }
+function schermNieuw(lln, pin, melding) {
+  app().innerHTML = `<div class="login-scherm"><div class="login-kaart">${loginKop(melding)}
+    <h2 style="text-align:center;color:var(--kl-blauw)">Welkom! 👋</h2>
+    <p style="text-align:center;margin-top:-4px">Leerlingnummer <b>${esc(lln)}</b> is nieuw. Maak je account af.</p>
+    <form id="nieuwForm" autocomplete="off">
+      <label class="veld">Klascode (van je docent)<input id="nKlas" required maxlength="12" autocapitalize="characters" placeholder="bijv. 4V2"></label>
+      <label class="veld">Je naam (zichtbaar in de ranglijst)<input id="nNaam" required maxlength="40" placeholder="bijv. Sanne de Vries" autocomplete="name"></label>
+      <label class="veld">Herhaal je pincode<input id="nPin" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" placeholder="••••"></label>
+      <button class="knop accent vol" type="submit">Account aanmaken</button>
+    </form>
+    <div style="text-align:center"><button class="link" data-act="naar-login">← Ander leerlingnummer</button></div>
+  </div></div>`;
+  $('#nieuwForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const klas = $('#nKlas').value.trim().toUpperCase(), naam = $('#nNaam').value.trim().replace(/\s+/g, ' ');
+    if ($('#nPin').value.trim() !== pin) return schermNieuw(lln, pin, 'De pincodes zijn niet gelijk. Probeer het opnieuw.');
+    const knop = e.target.querySelector('button'); knop.disabled = true; knop.textContent = 'Bezig…';
+    try {
+      const res = await API.call('rk_inloggen', { p_lln: lln, p_pin: pin, p_klas: klas, p_naam: naam });
+      if (res.status === 'error') return schermNieuw(lln, pin, res.msg);
+      verwerkLogin(res, lln, pin);
+    } catch (er) { schermNieuw(lln, pin, 'Geen verbinding met de server.'); }
+  });
+}
+function verwerkLogin(res, lln, pin) {
+  if (res.status === 'badpin') return schermLogin('Deze pincode hoort niet bij dit leerlingnummer. Ben je hem kwijt? Vraag je docent om je pincode te resetten.');
+  if (res.status === 'geblokkeerd') return schermLogin('Er is te vaak een verkeerde pincode ingevoerd. Vraag je docent om je pincode te resetten.');
+  if (res.status === 'error') return schermLogin(res.msg);
+  S = { lln: res.lln, klas: res.klas, naam: res.naam, pin };
+  localStorage.setItem('rk_sessie', JSON.stringify(S)); localStorage.setItem('rk_laatst', JSON.stringify({ lln: res.lln }));
+  const server = normState(res.state || {}); let lokaal = null;
+  try { lokaal = JSON.parse(localStorage.getItem(localKey())); } catch (er) { /* */ }
+  st = lokaal && lokaal.t > (server.t || 0) ? normState(lokaal) : server;
+  if (lokaal && lokaal.t > (server.t || 0)) bewaar();
+  if (res.status === 'new') toast('Welkom, ' + esc(res.naam) + '! Je account is aangemaakt.', '');
+  if (res.pinreset) toast('Je nieuwe pincode is opgeslagen.', '');
+  schermHome();
+}
 async function autoLogin() {
   let s = null; try { s = JSON.parse(localStorage.getItem('rk_sessie')); } catch (e) { /* */ }
-  if (!s) return schermLogin();
+  if (!s || !s.lln) { localStorage.removeItem('rk_sessie'); return schermLogin(); }
   try {
-    const res = await API.call('rk_login', { p_klas: s.klas, p_naam: s.naam, p_pin: s.pin });
+    const res = await API.call('rk_inloggen', { p_lln: s.lln, p_pin: s.pin, p_klas: '', p_naam: '' });
     if (res.status !== 'ok') { localStorage.removeItem('rk_sessie'); return schermLogin(); }
-    S = { klas: res.klas, naam: res.naam, pin: s.pin };
-    const server = normState(res.state || {}); let lokaal = null;
-    try { lokaal = JSON.parse(localStorage.getItem(localKey())); } catch (er) { /* */ }
-    st = lokaal && lokaal.t > (server.t || 0) ? normState(lokaal) : server;
-    if (lokaal && lokaal.t > (server.t || 0)) bewaar();
-    schermHome();
+    verwerkLogin(res, s.lln, s.pin);
   } catch (e) {
-    // offline: ga verder met lokale kopie
     S = s; let lokaal = null; try { lokaal = JSON.parse(localStorage.getItem(localKey())); } catch (er) { /* */ }
     if (!lokaal) return schermLogin('Geen verbinding met de server.');
     st = normState(lokaal); schermHome(); zetOpslag('offline');
@@ -326,10 +359,10 @@ function schermHome() {
 }
 async function haalRanglijst() {
   if (dirty) await flush();          // eigen XP eerst opslaan, dan klopt de ranglijst
-  return await API.call('rk_ranglijst', { p_klas: S.klas });
+  return await API.call('rk_ranglijst2', { p_klas: S.klas, p_lln: S.lln });
 }
 function top10HTML(lijst, compact) {
-  const ik = lijst.findIndex(l => nkey(l.naam) === nkey(S.naam));
+  const ik = lijst.findIndex(l => l.ik);
   const top = lijst.slice(0, 10);
   const li = (l, i) => `<li class="${i === ik ? 'ik' : ''}"><span class="pos">${['🥇', '🥈', '🥉'][i] || i + 1}</span><span class="nm">${esc(l.naam)}</span><span class="sc">${l.xp} XP</span></li>`;
   let h = `<ol class="ranglijst ${compact ? 'top10' : ''}">${top.map(li).join('')}</ol>`;
@@ -341,7 +374,7 @@ async function laadTop10() {
   const el = $('#top10'); if (!el) return;
   try {
     const lijst = await haalRanglijst(); const el2 = $('#top10'); if (!el2) return;
-    const ik = lijst.findIndex(l => nkey(l.naam) === nkey(S.naam));
+    const ik = lijst.findIndex(l => l.ik);
     el2.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px"><h3 style="margin:0">🏆 Top 10 van ${esc(S.klas)}</h3><span style="color:var(--zacht);font-size:.88rem">${ik >= 0 ? 'Jij staat op plek <b>' + (ik + 1) + '</b> van ' + lijst.length : ''}</span></div>` + top10HTML(lijst, true);
   } catch (e) { const el2 = $('#top10'); if (el2) el2.innerHTML = '<h3 style="margin:0">🏆 Top 10</h3><p style="color:var(--zacht)">De ranglijst kan nu niet worden geladen.</p>'; }
 }
@@ -636,6 +669,7 @@ function docentLogin(melding) {
 function docentKop(actief) {
   return `<header class="kop">${LOGO}<div class="woordmerk">Rekonomie Arena<small>Docentomgeving</small></div><div class="ruimte"></div>
     <button class="knop-kop" data-act="d-overzicht" ${actief === 'o' ? 'style="background:rgba(255,255,255,.3)"' : ''}>📊 Overzicht</button>
+    <button class="knop-kop" data-act="d-accounts" ${actief === 'a' ? 'style="background:rgba(255,255,255,.3)"' : ''}>👥 Accounts</button>
     <button class="knop-kop" data-act="d-strijd" ${actief === 's' ? 'style="background:rgba(255,255,255,.3)"' : ''}>⚔️ Strijd</button>
     <button class="knop-kop" data-act="d-uit">Uitloggen</button></header>`;
 }
@@ -683,11 +717,11 @@ function renderKlas() {
     <div class="perkament perkament-klein">${docentKaart(rows)}</div></div>
   <div class="kaart"><h3 style="margin-top:0">Lastigste opdrachten</h3>${moeilijk.length ? `<div class="tabelwrap"><table class="docent-tabel"><tr><th>Vraag</th><th>Gem. foute pogingen</th><th>Uitwerking bekeken</th><th>Gemaakt door</th></tr>${moeilijk.map(([id, o]) => `<tr><td><b>${id}</b></td><td>${(o.a / o.n).toFixed(1).replace('.', ',')}</td><td>${o.g}×</td><td>${o.n}</td></tr>`).join('')}</table></div>` : '<p>Nog geen gegevens.</p>'}</div>
   <div class="kaart"><h3 style="margin-top:0">Leerlingen</h3><div class="tabelwrap"><table class="docent-tabel"><tr><th>Naam</th><th>XP</th>${PAR.map(p => `<th>${p.id}</th>`).join('')}<th>Kaart H1</th><th>Kaart H2</th><th>1e keer goed</th><th>Hints</th><th>Training</th><th>Laatst actief</th><th></th></tr>
-  ${rows.map(r0 => `<tr><td><b>${esc(r0.l.naam)}</b>${r0.l.pinreset ? ' <small style="color:#b06f00">(pin gereset)</small>' : ''}</td><td>${r0.l.xp}</td>
+  ${rows.map(r0 => `<tr><td><b>${esc(r0.l.naam)}</b><br><small style="color:var(--zacht)">${esc(r0.l.lln || 'geen lln')}</small>${r0.l.pinreset ? ' <small style="color:#b06f00">(pin gereset)</small>' : ''}${r0.l.geblokkeerd ? ' <small style="color:#c8412d">(geblokkeerd)</small>' : ''}</td><td>${r0.l.xp}</td>
     ${r0.per.map(x => `<td><span class="mini"><small>${x.done}/${x.totaal} ${'★'.repeat(x.sterren)}</small><div class="balk"><div style="width:${100 * x.done / x.totaal}%"></div></div></span></td>`).join('')}
     ${r0.km.map(k => `<td style="white-space:nowrap">${k ? `${k.klaar}/${k.totaal}${k.sprong ? ` · ${k.sprong}🦘` : ''}${k.boss ? ' · 🐉✓' : k.ronde ? ` · 🐉 ronde ${k.ronde + 1}` : ''}<br><small>❤️ ${k.hp}</small>` : '–'}</td>`).join('')}
     <td>${r0.pctEerste == null ? '–' : r0.pctEerste + '%'}</td><td>${r0.hints}</td><td>${r0.train}</td><td>${fmtDatum(r0.l.updated_at)}</td>
-    <td style="white-space:nowrap"><button class="knop licht klein" data-act="d-pin" data-n="${esc(r0.l.naam)}">Pin reset</button> <button class="knop licht klein" data-act="d-del" data-n="${esc(r0.l.naam)}">🗑</button></td></tr>`).join('')}
+    <td style="white-space:nowrap"><button class="knop licht klein" data-act="d-pin" data-id="${esc(r0.l.id)}" data-n="${esc(r0.l.naam)}">Pin reset</button> <button class="knop licht klein" data-act="d-del" data-id="${esc(r0.l.id)}" data-n="${esc(r0.l.naam)}">🗑</button></td></tr>`).join('')}
   </table></div><p style="font-size:.82rem;color:var(--zacht)">Pin reset: de leerling kiest bij de volgende keer inloggen zelf een nieuwe pincode. Voortgang blijft behouden.</p></div>`;
 }
 function docentKaart(rows) {
@@ -701,6 +735,40 @@ function exporteerCSV() {
   const lijnen = [kop0.join(';')].concat(rows.map(r0 => [r0.l.naam, r0.l.xp, ...r0.per.map(x => x.done + '/' + x.totaal), ...r0.per.map(x => x.sterren), r0.pctEerste ?? '', r0.hints, r0.train, r0.l.updated_at || ''].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')));
   const blob = new Blob(['﻿' + lijnen.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `rekonomie_${D.klas}.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ---------- accounts ---------- */
+async function schermAccounts() {
+  ui.scherm = 'accounts';
+  app().innerHTML = docentKop('a') + `<main class="wrap" style="max-width:1100px"><div class="kaart"><h2 style="margin-top:0">👥 Accounts</h2>
+    <p style="color:var(--zacht);margin-top:0">Alle leerlingaccounts. Leerlingen loggen in met hun leerlingnummer en een zelfgekozen pincode. Bij <b>Pin reset</b> kiest de leerling bij de volgende keer inloggen een nieuwe pincode; de voortgang blijft behouden.</p>
+    <div class="knoprij"><input id="accZoek" class="antwoord-invoer" style="font-size:17px;min-height:46px;flex:1 1 220px" placeholder="Zoek op naam of leerlingnummer">
+      <select id="accKlas" class="antwoord-invoer" style="font-size:17px;min-height:46px;flex:0 1 160px"><option value="">Alle klassen</option></select>
+      <button class="knop" data-act="acc-verwijder" id="accVerwijder" disabled>🗑 Verwijder geselecteerde</button></div></div>
+    <div class="kaart" id="accLijst"><p>Laden…</p></div></main>`;
+  $('#accZoek').addEventListener('input', accFilter); $('#accKlas').addEventListener('change', accFilter);
+  document.addEventListener('change', accChange);
+  laadAccounts();
+}
+function accChange(e) { if (e.target.classList && e.target.classList.contains('acc-check')) accTeller(); }
+function accTeller() { const n = document.querySelectorAll('.acc-check:checked').length; const b = $('#accVerwijder'); if (b) { b.disabled = !n; b.textContent = n ? `🗑 Verwijder ${n} geselecteerde` : '🗑 Verwijder geselecteerde'; } }
+async function laadAccounts() {
+  let lijst; try { lijst = (await API.call('rk_docent_accounts', { p_pw: PW })) || []; } catch (e) { $('#accLijst').innerHTML = '<div class="melding fout">Laden mislukt.</div>'; return; }
+  const sel = $('#accKlas'); const gekozen = sel.value; const klassen = [...new Set(lijst.map(a => a.klas))].sort();
+  sel.innerHTML = '<option value="">Alle klassen</option>' + klassen.map(k => `<option ${k === gekozen ? 'selected' : ''}>${esc(k)}</option>`).join('');
+  const dt = d => d ? new Date(d).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–';
+  $('#accLijst').innerHTML = lijst.length ? `<div class="tabelwrap"><table class="docent-tabel"><tr><th><input type="checkbox" data-act="acc-alles" aria-label="Alles selecteren" style="width:22px;height:22px"></th><th>Leerlingnummer</th><th>Naam</th><th>Klas</th><th>XP</th><th>Aangemaakt</th><th>Laatst actief</th><th>Status</th><th></th></tr>
+    ${lijst.map(a => `<tr data-zoek="${esc((a.naam + ' ' + (a.lln || '')).toLowerCase())}" data-klas="${esc(a.klas)}"><td><input type="checkbox" class="acc-check" value="${esc(a.id)}" style="width:22px;height:22px"></td>
+      <td>${a.lln ? esc(a.lln) : '<i style="color:var(--zacht)">geen (oud account)</i>'}</td><td><b>${esc(a.naam)}</b></td><td>${esc(a.klas)}</td><td>${a.xp}</td><td>${dt(a.created_at)}</td><td>${dt(a.updated_at)}</td>
+      <td>${a.geblokkeerd ? '<span style="color:#c8412d">geblokkeerd</span>' : a.pinreset ? '<span style="color:#b06f00">pin gereset</span>' : 'actief'}</td>
+      <td style="white-space:nowrap">${a.lln ? `<button class="knop licht klein" data-act="d-pin" data-id="${esc(a.id)}" data-n="${esc(a.naam)}">Pin reset</button> ` : ''}<button class="knop licht klein" data-act="d-del" data-id="${esc(a.id)}" data-n="${esc(a.naam)}">🗑</button></td></tr>`).join('')}
+    </table></div><p style="font-size:.85rem;color:var(--zacht)" id="accAantal"></p>` : '<p>Er zijn nog geen accounts.</p>';
+  accFilter(); accTeller();
+}
+function accFilter() {
+  const z = ($('#accZoek') || {}).value ? $('#accZoek').value.trim().toLowerCase() : ''; const k = $('#accKlas') ? $('#accKlas').value : ''; let n = 0;
+  document.querySelectorAll('#accLijst tr[data-zoek]').forEach(tr => { const zicht = (!z || tr.dataset.zoek.includes(z)) && (!k || tr.dataset.klas === k); tr.style.display = zicht ? '' : 'none'; if (zicht) n++; else tr.querySelector('.acc-check').checked = false; });
+  const a = $('#accAantal'); if (a) a.textContent = `${n} account${n === 1 ? '' : 's'} getoond.`; accTeller();
 }
 
 /* ---------- strijd (docent / digibord) ---------- */
@@ -849,8 +917,15 @@ const ACT = {
   'd-ververs': () => laadKlas(),
   'd-kaart': el => { D.kaartH = el.dataset.h; renderKlas(); },
   'd-csv': () => exporteerCSV(),
-  'd-pin': async el => { if (!confirm('Pincode resetten voor ' + el.dataset.n + '?')) return; await API.call('rk_docent_reset_pin', { p_pw: PW, p_klas: D.klas, p_naam: el.dataset.n }); laadKlas(); },
-  'd-del': async el => { if (!confirm('Leerling ' + el.dataset.n + ' en alle voortgang verwijderen?')) return; await API.call('rk_docent_verwijder', { p_pw: PW, p_klas: D.klas, p_naam: el.dataset.n }); laadKlas(); },
+  'd-pin': async el => { if (!confirm('Pincode resetten voor ' + el.dataset.n + '? De leerling kiest bij de volgende keer inloggen zelf een nieuwe pincode.')) return; await API.call('rk_docent_pinreset', { p_pw: PW, p_id: el.dataset.id }); ui.scherm === 'accounts' ? laadAccounts() : laadKlas(); },
+  'd-del': async el => { if (!confirm('Account van ' + el.dataset.n + ' en alle voortgang definitief verwijderen?')) return; await API.call('rk_docent_verwijderen', { p_pw: PW, p_ids: [el.dataset.id] }); ui.scherm === 'accounts' ? laadAccounts() : laadKlas(); },
+  'd-accounts': () => { stopHost(); schermAccounts(); },
+  'acc-alles': el => { const aan = el.checked; document.querySelectorAll('.acc-check').forEach(c => { if (c.closest('tr').style.display !== 'none') c.checked = aan; }); accTeller(); },
+  'acc-verwijder': async () => {
+    const ids = [...document.querySelectorAll('.acc-check:checked')].map(c => c.value); if (!ids.length) return;
+    if (!confirm(`${ids.length} account${ids.length === 1 ? '' : 's'} en alle voortgang definitief verwijderen?`)) return;
+    const n = await API.call('rk_docent_verwijderen', { p_pw: PW, p_ids: ids }); toast(`${n} account${n === 1 ? '' : 's'} verwijderd`); laadAccounts();
+  },
   's-maak': () => maakSpel(),
   'h-start': () => control('start'),
   'h-reveal': () => control('reveal'),
@@ -861,7 +936,7 @@ const ACT = {
 /*KAART*/
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
-  const f = ACT[el.dataset.act]; if (f) { e.preventDefault(); f(el); }
+  const f = ACT[el.dataset.act]; if (f) { if (el.type !== 'checkbox') e.preventDefault(); f(el); }
 });
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
