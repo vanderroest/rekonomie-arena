@@ -202,13 +202,14 @@ const BADGES = [
   ['pp', '📐', 'Procentpuntpurist', '5 keer procent en procentpunt goed', s => (s.c.tags.pp || 0) >= 5],
   ['reeks10', '🔥', 'Op dreef', '10 keer achter elkaar in één keer goed', s => s.c.best >= 10],
   ['trainer', '🏋️', 'Trainingsbeest', '25 trainingsvragen goed', s => s.c.trgoed >= 25],
-  ['zelf', '🧠', 'Zelfstandig', 'Een paragraaf af zonder hints', s => PAR.some(p => { const x = parStatus(p); return x.done === x.totaal && x.hints === 0; })],
-  ['ster3', '⭐', 'Sterrenjager', '3 sterren in een paragraaf', s => PAR.some(p => parStatus(p).sterren === 3)],
-  ['boss1', '🐉', 'Eindbaas H1', 'Zelftest hoofdstuk 1 voltooid', s => { const x = parStatus(PAR[2]); return x.done === x.totaal; }],
-  ['boss2', '🏆', 'Eindbaas H2', 'Zelftest hoofdstuk 2 voltooid', s => { const x = parStatus(PAR[6]); return x.done === x.totaal; }]
+  ['boons', '🎒', 'Verzamelaar', '5 boons verdiend of gekocht', s => (s.c.boons || 0) >= 5],
+  ['ongeschonden', '🛡️', 'Ongeschonden', 'Een eindbaas verslagen zonder fout', s => !!s.c.ongeschonden],
+  ['ontdekker', '🧭', 'Ontdekkingsreiziger', 'Alle vakjes van een kaart bezocht', s => !!s.m && ['h1', 'h2'].some(h => s.m[h] && KAARTEN[h].nodes.every(n => s.m[h].done[n.id] === 'klaar'))],
+  ['boss1', '🐉', 'Drakendoder', 'Eindbaas van hoofdstuk 1 verslagen', s => !!(s.m && s.m.h1 && s.m.h1.boss)],
+  ['boss2', '🏆', 'Hydrabedwinger', 'Eindbaas van hoofdstuk 2 verslagen', s => !!(s.m && s.m.h2 && s.m.h2.boss)]
 ];
 function checkBadges() {
-  for (const [id, ic, nm] of BADGES) if (!st.bd[id] && BADGES.find(b => b[0] === id)[4](st)) { st.bd[id] = Date.now(); setTimeout(() => toast(`${ic} Badge behaald: <b>${nm}</b>`, 'badge'), 600); }
+  for (const [id, ic, nm, , f] of BADGES) if (!st.bd[id] && f(st)) { st.bd[id] = Date.now(); setTimeout(() => toast(`${ic} Badge behaald: <b>${nm}</b>`, 'badge'), 600); }
 }
 function geefXP(n, reden) {
   if (n <= 0) return; const oud = rang(st.xp); st.xp += n; toast(`+${n} XP${reden ? ' · ' + reden : ''}`, 'xp');
@@ -291,41 +292,33 @@ async function autoLogin() {
 
 /* ================= HOME ================= */
 function schermHome() {
-  ui.scherm = 'home'; checkBadges();
-  const werelden = [[1, 'Hoofdstuk 1 · Rekenen'], [2, 'Hoofdstuk 2 · Procenten']];
-  const behaald = Object.keys(st.bd).length;
+  ui.scherm = 'home'; ui.node = null; ui.h = null; clearInterval(ui.evIv); mapState(); checkBadges();
+  const behaald = BADGES.filter(b => st.bd[b[0]]).length;
   app().innerHTML = kop() + `<main class="wrap">
   <div class="kaart" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center">
     <div style="flex:1;min-width:220px"><h2 style="margin:0">Hoi ${esc(S.naam.split(' ')[0])}!</h2>
-      <div style="color:var(--zacht);font-size:.92rem">Klas ${esc(S.klas)} · ${behaald}/${BADGES.length} badges · beste reeks ${st.c.best}</div></div>
+      <div style="color:var(--zacht);font-size:.92rem">Klas ${esc(S.klas)} · 🪙 ${st.m.munten} munten · ${behaald}/${BADGES.length} badges</div></div>
     <div class="knoprij">
       <button class="knop accent" data-act="strijd-join">⚔️ Doe mee met de strijd</button>
       <button class="knop licht" data-act="ranglijst">🏆 Ranglijst</button>
       <button class="knop licht" data-act="badges">🎖️ Badges</button>
     </div>
   </div>
+  <h2 class="kamerkop">🗺️ Kies je kaart</h2>
+  <div class="kaartkaarten">${kaartKaartje('h1')}${kaartKaartje('h2')}</div>
   <div class="kaart" id="top10"><h3 style="margin:0">🏆 Top 10 van ${esc(S.klas)}</h3><p style="color:var(--zacht);margin:6px 0 0">Laden…</p></div>
   <details class="kaart"><summary style="font-weight:700;cursor:pointer">Hoe werkt het?</summary>
     <ul style="margin-bottom:0">
-      <li>Elke paragraaf heeft <b>theorie</b>, de <b>opdrachten uit het boekje</b> en een <b>training</b> met steeds nieuwe sommen.</li>
-      <li>In één keer goed: <b>10 XP</b>. Tweede poging 6 XP, daarna 3 XP. Een hint halveert de XP.</li>
-      <li>Kies bij een antwoord ook de juiste <b>eenheid</b> (€, %, procentpunt): dat hoort bij economie.</li>
-      <li>De <b>top 10</b> van je klas staat bovenaan; je eigen plek zie je altijd.</li>
-      <li>⭐ alle opdrachten af · ⭐⭐ minstens 75% in één keer goed · ⭐⭐⭐ ook een trainingsreeks van 5.</li>
-      <li>Ken je de stof al? Een paragraaf op slot open je met een <b>snelle check</b> (3 sommen goed).</li>
-      <li>Typ getallen zoals je gewend bent: <b>1.250,75</b> · <b>-2,9</b> · <b>588,7 miljard</b>.</li>
+      <li>Elk hoofdstuk is een <b>kaart</b>. Je begint onderaan en kiest steeds een vakje dat met een pad verbonden is. Bovenaan wacht de <b>eindbaas</b>: de zelftest.</li>
+      <li>⚔️ Opdracht uit het boekje · 💀 Elite (pittig, dubbele munten en een boon) · ❓ Onbekend · 🧰 Schatkist · 🔥 Rustplaats · 🛒 Winkel.</li>
+      <li>Je hebt <b>5 harten</b>. Een fout antwoord kost een hart. Zijn ze op? Dan lees je eerst de theorie en ga je verder met 3 harten.</li>
+      <li>Met <b>munten</b> koop je in de winkel boons: 🦘 Sprong (vakje overslaan), 🛡️ Schild, 💡 Lampje (gratis hint) en 🍀 Klavertje (dubbele munten). Je kunt er maximaal 3 bij je hebben.</li>
+      <li>Versla je de eindbaas, dan opent de volgende kaart en mag je in <b>vrij spel</b> alle andere vakjes nog bezoeken.</li>
+      <li>Typ getallen zoals je gewend bent: <b>1.250,75</b> · <b>-2,9</b> · <b>588,7 miljard</b>, en kies de juiste eenheid.</li>
     </ul></details>
-  ${werelden.map(([h, t]) => `<section class="wereld"><div class="wereld-kop"><h2>${t}</h2><span>Rekonomie blz. ${h === 1 ? '5–8' : '9–17'}</span></div><div class="pad">
-    ${PAR.map((p, i) => [p, i]).filter(([p]) => p.h === h).map(([p, i]) => {
-      const x = parStatus(p); const open = ontgrendeld(i);
-      return `<button class="level ${p.boss ? 'boss' : ''} ${open ? '' : 'op-slot'}" data-act="${open ? 'open-par' : 'slot'}" data-id="${p.id}">
-        <span class="nr">PARAGRAAF ${p.id}</span><span class="naam">${esc(p.titel)}</span>
-        <span class="sterren">${[1, 2, 3].map(n => `<span class="${x.sterren >= n ? 'aan' : ''}">★</span>`).join('')}</span>
-        <span class="sub"><span>${x.done}/${x.totaal} opdrachten</span><span>blz. ${p.p}</span></span>
-        <span class="voortgang"><div style="width:${Math.round(100 * x.done / x.totaal)}%"></div></span>
-        ${open ? '' : '<span class="sub" style="color:var(--kl-blauw-2);font-weight:600">Tik voor snelle check</span>'}
-      </button>`;
-    }).join('')}</div></section>`).join('')}
+  <h2 class="kamerkop">🏋️ Oefenruimte</h2>
+  <div class="kaart"><p style="margin-top:0;color:var(--zacht)">Theorie en eindeloze training per paragraaf, met steeds nieuwe getallen. Telt mee voor XP, niet voor de kaart.</p>
+    <div class="knoprij">${PAR.map(p => `<button class="knop licht klein" data-act="open-par" data-id="${p.id}">§ ${p.id} ${esc(p.titel)}</button>`).join('')}</div></div>
   <div style="text-align:center"><button class="link" data-act="uitloggen">Uitloggen</button></div>
   </main>`;
   zetOpslag(saveState);
@@ -355,7 +348,7 @@ async function laadTop10() {
 
 /* ================= PARAGRAAF ================= */
 function openPar(id, tab) {
-  const par = PAR.find(p => p.id === id); ui.scherm = 'par'; ui.par = par; ui.tab = tab || ui.tab || 'opdrachten';
+  const par = PAR.find(p => p.id === id); ui.scherm = 'par'; ui.node = null; ui.par = par; ui.tab = tab === 'theorie' ? 'theorie' : 'training';
   if (ui.tab === 'opdrachten' && (!ui.qid || !vragenVan(par).some(q => q.id === ui.qid))) {
     const vr = vragenVan(par); const eerste = vr.find(q => !(st.q[q.id] && st.q[q.id].s)); ui.qid = (eerste || vr[0]).id;
   }
@@ -364,13 +357,12 @@ function openPar(id, tab) {
 function renderPar() {
   const par = ui.par; const x = parStatus(par);
   let inhoud = '';
-  if (ui.tab === 'theorie') inhoud = `<div class="kaart theorie">${par.theorie}<p style="color:var(--zacht);font-size:.85rem;margin-top:16px">Zie ook Rekonomie blz. ${par.p}.</p><button class="knop" data-act="tab" data-tab="opdrachten">Naar de opdrachten →</button></div>`;
+  if (ui.tab === 'theorie') inhoud = `<div class="kaart theorie">${par.theorie}<p style="color:var(--zacht);font-size:.85rem;margin-top:16px">Zie ook Rekonomie blz. ${par.p}.</p><button class="knop" data-act="tab" data-tab="training">Naar de training →</button></div>`;
   else if (ui.tab === 'opdrachten') inhoud = renderOpdrachten(par);
   else inhoud = renderTraining(par);
   app().innerHTML = kop() + `<main class="wrap">
-    <div class="terugrij"><button class="knop licht klein" data-act="home">← Kaart</button><h2>${par.id} ${esc(par.titel)}${par.boss ? ' 🐉' : ''}</h2>
-      <span class="sterren">${[1, 2, 3].map(n => `<span class="${x.sterren >= n ? 'aan' : ''}">★</span>`).join('')}</span></div>
-    <nav class="tabs">${[['theorie', '📖 Theorie'], ['opdrachten', `✏️ Opdrachten ${x.done}/${x.totaal}`], ['training', '🏋️ Training']].map(([t, l]) => `<button class="${ui.tab === t ? 'actief' : ''}" data-act="tab" data-tab="${t}">${l}</button>`).join('')}</nav>
+    <div class="terugrij"><button class="knop licht klein" data-act="home">← Terug</button><h2>Oefenruimte § ${par.id} ${esc(par.titel)}</h2></div>
+    <nav class="tabs">${[['theorie', '📖 Theorie'], ['training', '🏋️ Training']].map(([t, l]) => `<button class="${ui.tab === t ? 'actief' : ''}" data-act="tab" data-tab="${t}">${l}</button>`).join('')}</nav>
     ${inhoud}</main>`;
   zetOpslag(saveState);
   const inp = $('#ant'); if (inp && !('ontouchstart' in window)) inp.focus();
@@ -392,12 +384,12 @@ function vraagHTML(c) {
   const klaar = c.mode === 'boek' ? !!s.s : !!c.klaar;
   let h = '';
   if (ctx.context) h += `<div class="context"><span class="bron">Opdracht ${ctx.nr} · Rekonomie blz. ${ctx.p}</span>${ctx.context}</div>`;
-  h += `<div class="vraaglabel">${c.mode === 'boek' ? 'VRAAG ' + q.id : c.mode === 'check' ? 'SNELLE CHECK ' + (ui.check.n + 1) + '/3' : 'TRAINING'}</div><div class="vraagtekst">${q.tekst}</div>`;
+  h += `<div class="vraaglabel">${c.label || (c.mode === 'boek' ? 'VRAAG ' + q.id : c.mode === 'check' ? 'SNELLE CHECK ' + (ui.check.n + 1) + '/3' : 'TRAINING')}</div><div class="vraagtekst">${q.tekst}</div>`;
   if (klaar && c.mode === 'boek') {
     h += `<div class="feedback ${s.s === 'getoond' ? 'bijna' : 'goed'}"><b>${s.s === 'getoond' ? 'Uitwerking bekeken' : s.s === 'zelf' ? 'Zelf nagekeken: ' + ({ goed: 'goed', deels: 'deels goed', fout: 'nog niet goed' }[s.z] || '') : '✓ Goed' + (s.f ? ' in één keer' : '')}</b>
       ${q.type !== 'open' ? `<div>Antwoord: <b>${esc(E.antwoordTekst(q))}</b></div>` : `<div class="uitleg"><b>Modelantwoord:</b> ${esc(q.model)}</div>`}
       ${q.uitleg ? `<div class="uitleg">${q.uitleg}</div>` : ''}</div>`;
-    h += `<div class="knoprij">${volgendeKnop()}</div>`;
+    h += `<div class="knoprij">${ui.node ? nodeVolgendeKnop() : volgendeKnop()}</div>`;
     return h;
   }
   if (q.type === 'mc') {
@@ -416,16 +408,17 @@ function vraagHTML(c) {
       ${keuze ? `<div class="eenheden"><span>eenheid:</span>${opties.map(u => `<button class="eenheid ${c.unit === u ? 'gekozen' : ''}" data-act="unit" data-u="${u}">${u === 'procentpunt' ? 'procentpunt' : u}</button>`).join('')}</div>`
         : q.unit ? `<span class="eenheid-vast">${esc(q.unit)}</span>` : ''}</div>
       <div class="knoprij"><button class="knop" data-act="controleer">Controleer</button>
-      ${c.mode === 'boek' && q.hint && !c.hint ? `<button class="knop licht" data-act="hint">💡 Hint (halve XP)</button>` : ''}
+      ${c.mode === 'boek' && q.hint && !c.hint ? hintKnop() : ''}
       ${c.mode === 'boek' && (s.a || 0) >= 3 ? `<button class="knop licht" data-act="toon-uitwerking">Toon uitwerking</button>` : ''}
       ${c.mode !== 'boek' && (c.pogingen || 0) >= 2 ? `<button class="knop licht" data-act="toon-uitwerking">Toon uitwerking</button>` : ''}</div>`;
   }
-  if (q.type === 'mc' && c.mode === 'boek' && q.hint && !c.hint) h += `<div class="knoprij"><button class="knop licht" data-act="hint">💡 Hint (halve XP)</button></div>`;
+  if (q.type === 'mc' && c.mode === 'boek' && q.hint && !c.hint) h += `<div class="knoprij">${hintKnop()}</div>`;
   if (c.hint && q.hint) h += `<div class="hintblok">💡 ${q.hint}</div>`;
   if (c.fb) h += c.fb;
-  if (c.mode !== 'boek' && c.klaar) h += `<div class="knoprij">${c.mode === 'check' ? '<button class="knop" data-act="check-volgende">Verder →</button>' : '<button class="knop" data-act="train-volgende">Volgende som →</button>'}</div>`;
+  if (c.mode !== 'boek' && c.klaar) h += `<div class="knoprij">${c.mode === 'check' ? '<button class="knop" data-act="check-volgende">Verder →</button>' : c.mode === 'event' ? '<button class="knop accent" data-act="event-verder">Verder →</button>' : '<button class="knop" data-act="train-volgende">Volgende som →</button>'}</div>`;
   return h;
 }
+function hintKnop() { const lamp = ui.node && st.m && st.m.boons.includes('lampje'); return `<button class="knop licht" data-act="hint">💡 ${lamp ? 'Hint (gebruikt je Lampje)' : 'Hint (halve XP)'}</button>`; }
 function volgendeKnop() {
   const vr = vragenVan(ui.par); const i = vr.findIndex(v => v.id === ui.qid);
   const open = vr.slice(i + 1).find(v => !(st.q[v.id] && st.q[v.id].s)) || vr.find(v => !(st.q[v.id] && st.q[v.id].s));
@@ -445,6 +438,7 @@ function controleer() {
   const c = ui.cur; const q = c.q; const inv = $('#ant') ? $('#ant').value : ''; c.inv = inv;
   const res = E.check(q, inv, c.unit);
   if (c.mode === 'check') return checkAntwoord(res);
+  if (c.mode === 'event') return eventAntwoord(res);
   const rec = c.mode === 'boek' ? (st.q[q.id] = st.q[q.id] || { a: 0 }) : null;
   if (res.status === 'leeg' || res.status === 'kies-eenheid') { c.fb = fbHTML('info', '', res.tekst); return herteken(); }
   if (res.status === 'bijna') { c.fb = fbHTML('bijna', 'Bijna.', res.tekst); if (res.soort) st.fs[res.soort] = (st.fs[res.soort] || 0) + 1; bewaar(); return herteken(); }
@@ -453,8 +447,9 @@ function controleer() {
     telFout(res.soort);
     if (rec) rec.a = (rec.a || 0) + 1; else c.pogingen = (c.pogingen || 0) + 1;
     if (c.mode === 'train') { const tr = trRec(ui.par.id); tr.f++; tr.st = 0; }
+    if (ui.node && c.mode === 'boek') nodeNaFout();
     c.fb = fbHTML('fout', '✗', res.tekst + ((rec ? rec.a : c.pogingen) >= (rec ? 3 : 2) ? ' <i>Lukt het niet? Bekijk de uitwerking.</i>' : ''));
-    bewaar(); herteken(); const k = $('#vraagkaart'); if (k) { k.classList.remove('schud'); void k.offsetWidth; k.classList.add('schud'); }
+    bewaar(); herteken(); if (ui.node) hudVernieuw(); const k = $('#vraagkaart'); if (k) { k.classList.remove('schud'); void k.offsetWidth; k.classList.add('schud'); }
     return;
   }
   // goed
@@ -463,11 +458,12 @@ function controleer() {
 function goedAfhandelen(c, rec) {
   const q = c.q;
   if (c.mode === 'boek') {
-    const eerste = (rec.a || 0) === 0 && !c.hint;
-    let xp = rec.a === 0 ? 10 : rec.a === 1 ? 6 : 3; if (c.hint) xp = Math.ceil(xp / 2);
+    const eerste = (rec.a || 0) === 0 && (!c.hint || c.gratisHint);
+    let xp = rec.a === 0 ? 10 : rec.a === 1 ? 6 : 3; if (c.hint && !c.gratisHint) xp = Math.ceil(xp / 2);
     if (q.schatting) xp = 5; // schatvraag
-    Object.assign(rec, { s: 'goed', f: eerste && !q.schatting, h: !!c.hint, x: xp });
+    Object.assign(rec, { s: 'goed', f: eerste && !q.schatting, h: !!c.hint && !c.gratisHint, x: xp });
     telGoed(q, eerste, ui.par.id); geefXP(xp, eerste ? 'in één keer goed' : '');
+    if (ui.node) { nodeMunten(q, rec); c.fb = ''; checkBadges(); bewaar(); herteken(); hudVernieuw(); return; }
     const was = parStatus(ui.par);
     c.fb = '';
     checkBadges(); bewaar(); herteken();
@@ -661,9 +657,10 @@ async function laadKlas() {
 }
 function statsLeerling(l) {
   const s = normState(l.state || {}); const per = PAR.map(p => { const old = st; st = s; const x = parStatus(p); st = old; return x; });
+  const km = ['h1', 'h2'].map(h => { const M = s.m && s.m[h]; if (!M) return null; const d = Object.values(M.done); return { klaar: d.filter(x => x === 'klaar').length, sprong: d.filter(x => x === 'sprong').length, totaal: KAARTEN[h].nodes.length, boss: M.boss, hp: M.hp, ronde: M.ronde, done: M.done, pad: M.pad || [] }; });
   let eerste = 0, telbaar = 0, hints = 0;
   per.forEach(x => { eerste += x.eerste; telbaar += x.done; hints += x.hints; });
-  return { s, per, pctEerste: telbaar ? Math.round(100 * eerste / telbaar) : null, hints, train: s.c.trgoed || 0 };
+  return { s, per, km, pctEerste: telbaar ? Math.round(100 * eerste / telbaar) : null, hints, train: s.c.trgoed || 0 };
 }
 function renderKlas() {
   const rows = D.data.map(l => Object.assign({ l }, statsLeerling(l)));
@@ -680,13 +677,23 @@ function renderKlas() {
     <div class="kaart"><h3 style="margin-top:0">Gemiddelde voortgang ${esc(D.klas)} (${rows.length} leerlingen)</h3>${PAR.map((p, i) => `<div class="staaf"><span class="lbl">${p.id} ${esc(p.titel)}</span><span class="bk"><div style="width:${gemPar[i]}%;background:var(--kl-groen)"></div></span><span class="n">${gemPar[i]}%</span></div>`).join('')}</div>
     <div class="kaart"><h3 style="margin-top:0">Meest gemaakte foutsoorten</h3>${Object.keys(fs).length ? Object.entries(fs).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="staaf"><span class="lbl">${FSN[k] || k}</span><span class="bk"><div style="width:${100 * v / maxfs}%"></div></span><span class="n">${v}</span></div>`).join('') : '<p>Nog geen fouten geregistreerd.</p>'}</div>
   </div>
+  <div class="kaart"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Gekozen paden</h3>
+    <div class="knoprij">${['h1', 'h2'].map(h => `<button class="knop ${D.kaartH === h ? '' : 'licht'} klein" data-act="d-kaart" data-h="${h}">Hoofdstuk ${h[1]}</button>`).join('')}</div></div>
+    <p style="font-size:.85rem;color:var(--zacht);margin:6px 0">Het getal bij een vakje is het aantal leerlingen dat het heeft voltooid (🦘 = overgeslagen telt niet mee).</p>
+    <div class="perkament perkament-klein">${docentKaart(rows)}</div></div>
   <div class="kaart"><h3 style="margin-top:0">Lastigste opdrachten</h3>${moeilijk.length ? `<div class="tabelwrap"><table class="docent-tabel"><tr><th>Vraag</th><th>Gem. foute pogingen</th><th>Uitwerking bekeken</th><th>Gemaakt door</th></tr>${moeilijk.map(([id, o]) => `<tr><td><b>${id}</b></td><td>${(o.a / o.n).toFixed(1).replace('.', ',')}</td><td>${o.g}×</td><td>${o.n}</td></tr>`).join('')}</table></div>` : '<p>Nog geen gegevens.</p>'}</div>
-  <div class="kaart"><h3 style="margin-top:0">Leerlingen</h3><div class="tabelwrap"><table class="docent-tabel"><tr><th>Naam</th><th>XP</th>${PAR.map(p => `<th>${p.id}</th>`).join('')}<th>1e keer goed</th><th>Hints</th><th>Training</th><th>Laatst actief</th><th></th></tr>
+  <div class="kaart"><h3 style="margin-top:0">Leerlingen</h3><div class="tabelwrap"><table class="docent-tabel"><tr><th>Naam</th><th>XP</th>${PAR.map(p => `<th>${p.id}</th>`).join('')}<th>Kaart H1</th><th>Kaart H2</th><th>1e keer goed</th><th>Hints</th><th>Training</th><th>Laatst actief</th><th></th></tr>
   ${rows.map(r0 => `<tr><td><b>${esc(r0.l.naam)}</b>${r0.l.pinreset ? ' <small style="color:#b06f00">(pin gereset)</small>' : ''}</td><td>${r0.l.xp}</td>
     ${r0.per.map(x => `<td><span class="mini"><small>${x.done}/${x.totaal} ${'★'.repeat(x.sterren)}</small><div class="balk"><div style="width:${100 * x.done / x.totaal}%"></div></div></span></td>`).join('')}
+    ${r0.km.map(k => `<td style="white-space:nowrap">${k ? `${k.klaar}/${k.totaal}${k.sprong ? ` · ${k.sprong}🦘` : ''}${k.boss ? ' · 🐉✓' : k.ronde ? ` · 🐉 ronde ${k.ronde + 1}` : ''}<br><small>❤️ ${k.hp}</small>` : '–'}</td>`).join('')}
     <td>${r0.pctEerste == null ? '–' : r0.pctEerste + '%'}</td><td>${r0.hints}</td><td>${r0.train}</td><td>${fmtDatum(r0.l.updated_at)}</td>
     <td style="white-space:nowrap"><button class="knop licht klein" data-act="d-pin" data-n="${esc(r0.l.naam)}">Pin reset</button> <button class="knop licht klein" data-act="d-del" data-n="${esc(r0.l.naam)}">🗑</button></td></tr>`).join('')}
   </table></div><p style="font-size:.82rem;color:var(--zacht)">Pin reset: de leerling kiest bij de volgende keer inloggen zelf een nieuwe pincode. Voortgang blijft behouden.</p></div>`;
+}
+function docentKaart(rows) {
+  const h = D.kaartH || 'h1'; const counts = {};
+  rows.forEach(r0 => { const k = r0.km[h === 'h1' ? 0 : 1]; if (k) Object.entries(k.done).forEach(([id, v]) => { if (v === 'klaar') counts[id] = (counts[id] || 0) + 1; }); });
+  const oud = st; st = normState({}); mapState(); const svg = kaartSVG(h, { counts }); st = oud; return svg;
 }
 function exporteerCSV() {
   const rows = D.data.map(l => Object.assign({ l }, statsLeerling(l)));
@@ -788,19 +795,20 @@ function stand(s, eind) {
 
 /* ================= ACTIES ================= */
 const ACT = {
-  'home': () => { sluitModal(); if (S && st) { ui.cur = null; schermHome(); } else schermLogin(); },
+  'home': () => { sluitModal(); clearInterval(ui.evIv); if (S && st) { ui.cur = null; if (ui.scherm === 'kaart' || !ui.node) schermHome(); else openKaart(ui.node.h); } else schermLogin(); },
   'uitloggen': async () => { await flush(); localStorage.removeItem('rk_sessie'); S = null; st = null; schermLogin(); },
-  'open-par': el => { sluitModal(); ui.cur = null; ui.qid = null; openPar(el.dataset.id, 'opdrachten'); },
+  'open-par': el => { sluitModal(); ui.cur = null; ui.qid = null; openPar(el.dataset.id, 'training'); },
   'slot': el => { sluitModal(); startCheck(el.dataset.id); },
   'tab': el => { ui.cur = null; ui.tab = el.dataset.tab; if (ui.tab === 'opdrachten') ui.qid = ui.qid || null; openPar(ui.par.id, ui.tab); window.scrollTo(0, 0); },
-  'kies-vraag': el => { ui.qid = el.dataset.id; ui.cur = null; renderPar(); const k = $('#vraagkaart'); if (k && k.getBoundingClientRect().top < 0) k.scrollIntoView({ behavior: 'smooth' }); },
+  'kies-vraag': el => { ui.qid = el.dataset.id; ui.cur = null; if (ui.node) { ui.node.t === 'boss' ? renderBoss() : renderOpdrachtVakje(); } else renderPar(); const k = $('#vraagkaart'); if (k && k.getBoundingClientRect().top < 0) k.scrollIntoView({ behavior: 'smooth' }); },
   'controleer': () => controleer(),
   'unit': el => { ui.cur.unit = el.dataset.u; const inv = $('#ant'); if (inv) ui.cur.inv = inv.value; herteken(); },
   'teken': () => { const i = $('#ant'); if (!i) return; i.value = i.value.trim().startsWith('-') ? i.value.trim().slice(1) : '-' + i.value.trim(); ui.cur.inv = i.value; },
-  'hint': () => { ui.cur.hint = true; st.c.hint++; if (ui.cur.mode === 'boek') { const rec = st.q[ui.cur.q.id] = st.q[ui.cur.q.id] || { a: 0 }; rec.h = true; } bewaar(); herteken(); },
+  'hint': () => { ui.cur.hint = true; if (ui.node && st.m.boons.includes('lampje')) { st.m.boons.splice(st.m.boons.indexOf('lampje'), 1); ui.cur.gratisHint = true; toast('💡 Lampje gebruikt'); hudVernieuw(); } else st.c.hint++; if (ui.cur.mode === 'boek') { const rec = st.q[ui.cur.q.id] = st.q[ui.cur.q.id] || { a: 0 }; rec.h = true; } bewaar(); herteken(); },
   'toon-uitwerking': () => {
     const c = ui.cur; const q = c.q;
     if (c.mode === 'boek') { const rec = st.q[q.id] = st.q[q.id] || { a: 0 }; Object.assign(rec, { s: 'getoond', f: false, x: 0 }); st.c.streak = 0; bewaar(); herteken(); }
+    else if (c.mode === 'event') { c.klaar = true; c.goedGedaan = c.mode === 'event' && ui.ev && (ui.ev.soort === 'schat' || ui.ev.soort === 'rust'); c.fb = fbHTML('bijna', 'Uitwerking:', `Antwoord: <b>${esc(E.antwoordTekst(q))}</b><div class="uitleg">${q.uitleg || ''}</div>`); herteken(); }
     else { c.klaar = true; const tr = trRec(ui.par.id); tr.st = 0; c.fb = fbHTML('bijna', 'Uitwerking:', `Antwoord: <b>${esc(E.antwoordTekst(q))}</b><div class="uitleg">${q.uitleg || ''}</div>`); bewaar(); renderPar(); }
   },
   'mc': el => {
@@ -810,10 +818,10 @@ const ACT = {
       goedAfhandelen(c, rec);
     } else {
       if (q.schatting) { // schatting: geen strafpunten, wel uitleg
-        Object.assign(rec, { s: 'goed', f: false, x: 2 }); geefXP(2, 'geschat'); c.fb = ''; bewaar(); herteken();
+        Object.assign(rec, { s: 'goed', f: false, x: 2 }); geefXP(2, 'geschat'); c.fb = ''; bewaar(); herteken(); if (ui.node) hudVernieuw();
         return;
       }
-      c.fout = (c.fout || []).concat(i); rec.a = (rec.a || 0) + 1; telFout(null);
+      c.fout = (c.fout || []).concat(i); rec.a = (rec.a || 0) + 1; telFout(null); if (ui.node) { nodeNaFout(); hudVernieuw(); }
       c.fb = fbHTML('fout', '✗', 'Dat is niet juist. Probeer het nog eens.'); bewaar(); herteken();
     }
   },
@@ -832,12 +840,14 @@ const ACT = {
   's-verstuur': () => { const v = $('#sAnt').value; const [x, alt] = E.parseNum(v); if (isNaN(x)) { $('#sMelding').innerHTML = '<div class="melding fout">Typ een getal.</div>'; return; } strijdVerstuur(x, null); },
   'teken-s': () => { const i = $('#sAnt'); if (i) i.value = i.value.trim().startsWith('-') ? i.value.trim().slice(1) : '-' + i.value.trim(); },
   'strijd-uit': () => { stopPoll(); schermHome(); },
+  'uitloggen-kaart': () => schermHome(),
   'docent-login': () => PW ? docentHome() : docentLogin(),
   'naar-login': () => schermLogin(),
   'd-overzicht': () => { stopHost(); docentHome(); },
   'd-strijd': () => strijdSetup(),
   'd-uit': () => { stopHost(); PW = null; sessionStorage.removeItem('rk_pw'); schermLogin(); },
   'd-ververs': () => laadKlas(),
+  'd-kaart': el => { D.kaartH = el.dataset.h; renderKlas(); },
   'd-csv': () => exporteerCSV(),
   'd-pin': async el => { if (!confirm('Pincode resetten voor ' + el.dataset.n + '?')) return; await API.call('rk_docent_reset_pin', { p_pw: PW, p_klas: D.klas, p_naam: el.dataset.n }); laadKlas(); },
   'd-del': async el => { if (!confirm('Leerling ' + el.dataset.n + ' en alle voortgang verwijderen?')) return; await API.call('rk_docent_verwijder', { p_pw: PW, p_klas: D.klas, p_naam: el.dataset.n }); laadKlas(); },
@@ -848,6 +858,7 @@ const ACT = {
   'h-stop': async () => { if (!confirm('Strijd beëindigen?')) return; await control('end'); },
   'h-docent': async () => { const v = $('#hAnt').value; const [x] = E.parseNum(v); if (isNaN(x)) return toast('Typ een getal'); const res = await control('docent', x, null); if (res && res.ok) toast('Antwoord docent ontvangen'); }
 };
+/*KAART*/
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const f = ACT[el.dataset.act]; if (f) { e.preventDefault(); f(el); }
