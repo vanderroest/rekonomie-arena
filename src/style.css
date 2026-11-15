@@ -377,3 +377,51 @@ textarea.open { width: 100%; min-height: 110px; border: 2px solid var(--rand); b
 .tour-kaart p { margin: 0 0 12px; font-size: .97rem; }
 .tour-kaart .knoprij { justify-content: flex-end; }
 .tour-tel { font-size: .75rem; color: var(--zacht); font-weight: 700; letter-spacing: .05em; }
+
+/* ===== duels ===== */
+.duellijst { list-style: none; padding: 0; margin: 0; }
+.duellijst li { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: #f5f7fb; margin-bottom: 8px; }
+.dl-ic { font-size: 1.6rem; }
+.dl-tekst { flex: 1; display: flex; flex-direction: column; }
+.dl-tekst small { color: var(--zacht); }
+.moduskeuze { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.moduskaart { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; border: 2px solid var(--rand); background: #fff; border-radius: 14px; padding: 12px 8px; min-height: 130px; color: var(--tekst); }
+.moduskaart .mi { font-size: 2rem; }
+.moduskaart small { color: var(--zacht); font-size: .78rem; line-height: 1.3; }
+.moduskaart.gekozen { border-color: var(--kl-accent); background: #fff8e6; box-shadow: 0 0 0 3px rgba(244,163,0,.25); }
+.duelscherm { min-height: 100vh; min-height: 100dvh; background: radial-gradient(ellipse at top, #24476e, #0c2442 70%); padding-top: max(16px, env(safe-area-inset-top)); }
+.duelscherm .wrap { padding-top: 16px; }
+.duelkop { display: flex; justify-content: space-between; align-items: center; color: #fff; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+.dueltimer { font-size: 1.8rem; font-weight: 800; font-variant-numeric: tabular-nums; background: rgba(255,255,255,.12); border-radius: 12px; padding: 2px 14px; }
+.dueltimer.bijna-om { background: #c8412d; animation: pulsje 1s infinite; }
+.kastelen { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 12px; }
+.kasteelvak { flex: 0 1 34%; text-align: center; color: #fff; }
+.kasteel { width: 100%; max-width: 190px; height: auto; display: block; margin: 0 auto; }
+.k-tegen { transform: scaleX(-1); }
+.knaam { font-weight: 700; margin: 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kasteelvak .hpbalk { height: 12px; }
+.kasteelvak .hpbalk > div { background: linear-gradient(90deg, #2f8f5b, #6cc28f); }
+.kinfo { font-size: .9rem; margin-top: 4px; min-height: 1.2em; }
+.kogelbaan { flex: 1; position: relative; height: 90px; align-self: center; }
+.kogel { position: absolute; top: 30px; left: 0; font-size: 1.8rem; color: #1b1b1b; opacity: 0; text-shadow: 0 0 6px #f4a300; }
+.kogel.vlieg-r { animation: vliegR .55s ease-in forwards; }
+.kogel.vlieg-l { animation: vliegL .55s ease-in forwards; }
+@keyframes vliegR { 0% { left: 0; top: 40px; opacity: 1; } 50% { top: 0; } 100% { left: 100%; top: 40px; opacity: 1; } }
+@keyframes vliegL { 0% { left: 100%; top: 40px; opacity: 1; } 50% { top: 0; } 100% { left: 0; top: 40px; opacity: 1; } }
+.kasteelvak.geraakt .kasteel { animation: geraakt .5s; }
+@keyframes geraakt { 0% { filter: none; } 20% { filter: brightness(1.8) sepia(1) saturate(4) hue-rotate(-30deg); transform: translateX(-5px); } 50% { transform: translateX(5px); } 100% { filter: none; transform: none; } }
+.kasteelvak.geraakt .k-tegen { animation: geraaktTegen .5s; }
+@keyframes geraaktTegen { 0% { filter: none; transform: scaleX(-1); } 20% { filter: brightness(1.8) sepia(1) saturate(4) hue-rotate(-30deg); transform: scaleX(-1) translateX(-5px); } 50% { transform: scaleX(-1) translateX(5px); } 100% { filter: none; transform: scaleX(-1); } }
+.sprintstand { background: rgba(255,255,255,.1); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; color: #fff; }
+.sp-rij { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.sp-rij span { width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.sp-rij b { width: 34px; text-align: right; font-size: 1.3rem; }
+.spbalk { flex: 1; height: 18px; background: rgba(255,255,255,.15); border-radius: 10px; overflow: hidden; }
+.spbalk > div { height: 100%; background: #c8412d; border-radius: 10px; transition: width .4s; }
+.spbalk > div.ik { background: var(--kl-accent); }
+.duelvraag { min-height: 220px; }
+.blokbalk { height: 8px; background: rgba(0,0,0,.08); border-radius: 6px; overflow: hidden; margin: 8px 0 4px; }
+.blokbalk > div { height: 100%; width: 100%; background: currentColor; opacity: .5; animation: leeglopen linear forwards; }
+@keyframes leeglopen { from { width: 100%; } to { width: 0; } }
+.aftel { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9rem; font-weight: 900; color: #fff; background: rgba(12,36,66,.75); z-index: 60; text-shadow: 0 6px 30px rgba(0,0,0,.5); }
+@media (max-width: 640px) { .sp-rij span { width: 80px; } .moduskeuze { grid-template-columns: 1fr; } }

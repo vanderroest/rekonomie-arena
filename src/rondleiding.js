@@ -4,6 +4,7 @@ const TOURS = {
     ['.kaartkaarten', '🗺️ Jouw kaarten', 'Elk hoofdstuk is een kaart. Begin bij hoofdstuk 1. Hoofdstuk 2 gaat open zodra je de eindbaas van hoofdstuk 1 hebt verslagen.'],
     ['#top10', '🏆 Top 10', 'Hier zie je wie in jouw klas de meeste XP heeft. Je eigen plek zie je altijd, ook als je (nog) niet in de top 10 staat.'],
     ['[data-act=strijd-join]', '⚔️ Klassikale strijd', 'Start je docent een strijd op het bord? Tik dan hier en vul de spelcode in.'],
+    ['[data-act=duel-arena]', '🤺 Duel', 'Daag een klasgenoot uit voor een 1-tegen-1: een <b>Sprint</b> (zo veel mogelijk goed in 3 minuten) of een <b>Kasteelstrijd</b>. Winnen levert badges op.'],
     ['[data-act=badges]', '🎖️ Badges', 'Met goed spelen verdien je badges. Hier zie je welke je al hebt en welke je nog kunt halen.'],
     ['.oefenruimte', '🏋️ Oefenruimte', 'Extra oefenen? Per paragraaf vind je hier de theorie en eindeloos nieuwe sommen.']
   ],

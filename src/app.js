@@ -14,6 +14,11 @@ const DEMO = /[?&]demo\b/.test(location.search);
 
 /* ================= API ================= */
 const API = {
+  async fn(naam, body) {   // Supabase edge function
+    if (DEMO) return Mock[naam](body);
+    const res = await fetch(`${CFG.url}/functions/v1/${naam}`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CFG.key, Authorization: 'Bearer ' + CFG.key }, body: JSON.stringify(body) });
+    return await res.json();
+  },
   async call(fn, args) {
     if (DEMO) return Mock[fn](args);
     const res = await fetch(`${CFG.url}/rest/v1/rpc/${fn}`, {
@@ -30,6 +35,15 @@ const API = {
 /* ---------- Mock-backend voor ?demo (zelfde gedrag als de Supabase-functies, opslag in localStorage) ---------- */
 const Mock = (() => {
   const K = 'rk_mock_db';
+  const mAuth = (db, lln, pin) => Object.values(db.s).find(x => x.lln === String(lln).trim() && x.pin === pin && pin && (x.fails || 0) < 10);
+  const dStand = () => ({ idx: 0, goed: 0, fout: 0, hp: 100, reeks: 0, schild: 0, blok: 0, lg: null });
+  const dEinde = d => {
+    if (d.status !== 'bezig' || Date.now() < d.start + d.duur * 1000) return false;
+    const a = d.st[d.maker], b = d.st[d.tegen]; let w = null;
+    if (d.mode === 'sprint') { if (a.goed !== b.goed) w = a.goed > b.goed ? d.maker : d.tegen; else if (a.goed > 0) w = a.lg <= b.lg ? d.maker : d.tegen; }
+    else { if (a.hp !== b.hp) w = a.hp > b.hp ? d.maker : d.tegen; else if (a.goed !== b.goed) w = a.goed > b.goed ? d.maker : d.tegen; }
+    d.status = 'klaar'; d.winnaar = w; return true;
+  };
   const load = () => { try { return JSON.parse(localStorage.getItem(K)) || { s: {}, g: {}, pw: 'Docent' }; } catch (e) { return { s: {}, g: {}, pw: 'Docent' }; } };
   const save = db => localStorage.setItem(K, JSON.stringify(db));
   const key = n => String(n || '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -65,6 +79,64 @@ const Mock = (() => {
     rk_docent_accounts({ p_pw }) { const db = load(); if (p_pw !== db.pw) return null; return Object.values(db.s).map(s => ({ id: s.id, lln: s.lln, naam: s.naam, klas: s.klas, xp: s.xp, updated_at: s.updated_at, created_at: s.created_at, pinreset: s.pin === '', geblokkeerd: s.fails >= 10 })).sort((a, b) => a.klas.localeCompare(b.klas) || a.naam.localeCompare(b.naam)); },
     rk_docent_pinreset({ p_pw, p_id }) { const db = load(); if (p_pw !== db.pw || !db.s[p_id]) return false; db.s[p_id].pin = ''; db.s[p_id].fails = 0; save(db); return true; },
     rk_docent_verwijderen({ p_pw, p_ids }) { const db = load(); if (p_pw !== db.pw) return 0; let n = 0; for (const id of p_ids) if (db.s[id]) { delete db.s[id]; n++; } save(db); return n; },
+    'rk-duel-maak'({ lln, pin, mode, onderwerp }) {
+      const db = load(); const me = Object.values(db.s).find(x => x.lln === String(lln) && x.pin === pin && pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
+      if (db.duelsUit) return { ok: false, msg: 'Duels staan op dit moment uit' };
+      const MIX = { h1: ['1.1', '1.2', '1.3'], h2: ['2.1', '2.2', '2.3', '2.4'] }; const pars = MIX[onderwerp] || [onderwerp];
+      const qs = []; for (let i = 0; i < 60; i++) qs.push(E.toBattle(genereer(pars[Math.floor(Math.random() * pars.length)])));
+      db.d = db.d || {}; Object.values(db.d).forEach(d => { if (d.maker === me.id && d.status === 'open') d.status = 'geannuleerd'; });
+      let c; do { c = String(1000 + Math.floor(Math.random() * 9000)); } while (db.d[c]);
+      db.d[c] = { code: c, klas: me.klas, maker: me.id, tegen: null, mode, onderwerp, status: 'open', qs, duur: mode === 'sprint' ? 180 : 480, start: null, winnaar: null, t: Date.now(), st: { [me.id]: dStand() } };
+      save(db); return { ok: true, code: c };
+    },
+    rk_duel_lijst({ p_lln, p_pin }) {
+      const db = load(); const me = mAuth(db, p_lln, p_pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
+      const ds = Object.values(db.d || {}); const vers = d => Date.now() - d.t < 600000;
+      const mijn = ds.filter(d => (d.maker === me.id || d.tegen === me.id) && (d.status === 'open' && vers(d) || d.status === 'bezig')).sort((a, b) => b.t - a.t)[0];
+      return { ok: true, aan: !db.duelsUit, klas: me.klas, mijn: mijn ? mijn.code : null, open: ds.filter(d => d.klas === me.klas && d.status === 'open' && d.maker !== me.id && vers(d)).map(d => ({ code: d.code, naam: db.s[d.maker].naam, mode: d.mode, onderwerp: d.onderwerp })) };
+    },
+    rk_duel_join({ p_lln, p_pin, p_code }) {
+      const db = load(); const me = mAuth(db, p_lln, p_pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
+      if (db.duelsUit) return { ok: false, msg: 'Duels staan op dit moment uit' };
+      const d = (db.d || {})[String(p_code).trim()]; if (!d || d.status !== 'open' || Date.now() - d.t > 600000) return { ok: false, msg: 'Deze uitdaging bestaat niet (meer)' };
+      if (d.klas !== me.klas) return { ok: false, msg: 'Deze uitdaging is van een andere klas' };
+      if (d.maker === me.id) return { ok: false, msg: 'Je kunt niet tegen jezelf spelen' };
+      d.tegen = me.id; d.status = 'bezig'; d.start = Date.now() + 4000; d.st[me.id] = dStand(); save(db); return { ok: true, code: d.code };
+    },
+    rk_duel_annuleer({ p_lln, p_pin, p_code }) { const db = load(); const me = mAuth(db, p_lln, p_pin); const d = (db.d || {})[p_code]; if (!me || !d || d.maker !== me.id || d.status !== 'open') return false; d.status = 'geannuleerd'; save(db); return true; },
+    rk_duel_state({ p_lln, p_pin, p_code }) {
+      const db = load(); const me = mAuth(db, p_lln, p_pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
+      const d = (db.d || {})[String(p_code).trim()]; if (!d || (d.maker !== me.id && d.tegen !== me.id)) return { ok: false, msg: 'Duel niet gevonden' };
+      if (dEinde(d)) save(db);
+      const s = d.st[me.id]; const oid = d.maker === me.id ? d.tegen : d.maker; const o = oid ? d.st[oid] : null; const nu = Date.now();
+      const res = { ok: true, code: d.code, mode: d.mode, onderwerp: d.onderwerp, status: d.status, duur: d.duur, tot_start_ms: d.start ? d.start - nu : null, resterend_ms: d.start ? Math.max(0, d.start + d.duur * 1000 - nu) : null,
+        me: { idx: s.idx, goed: s.goed, fout: s.fout, hp: s.hp, reeks: s.reeks, schild: s.schild, blok_ms: Math.max(0, (s.blok || 0) - nu) },
+        tegen: o ? { naam: db.s[oid].naam, goed: o.goed, fout: o.fout, hp: o.hp, reeks: o.reeks, schild: o.schild } : null };
+      if (d.status === 'bezig' && nu >= d.start) { const q = Object.assign({}, d.qs[s.idx % d.qs.length]); delete q.accept; delete q.fouten; delete q.antwoordTekst; delete q.uitleg; res.vraag = q; }
+      if (d.status === 'klaar') { res.uitslag = d.winnaar == null ? 'gelijk' : d.winnaar === me.id ? 'gewonnen' : 'verloren'; res.telt = (o ? o.goed : 0) >= 5; }
+      return res;
+    },
+    rk_duel_antwoord({ p_lln, p_pin, p_code, p_idx, p_waarde, p_skip }) {
+      const db = load(); const me = mAuth(db, p_lln, p_pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
+      const d = (db.d || {})[String(p_code).trim()]; if (!d) return { ok: false, msg: 'Duel niet gevonden' };
+      dEinde(d); if (d.status !== 'bezig') { save(db); return { ok: false, msg: 'Het duel is afgelopen', klaar: true }; }
+      const nu = Date.now(); if (nu < d.start) return { ok: false, msg: 'Het duel is nog niet begonnen' };
+      const s = d.st[me.id]; if (p_idx !== s.idx) return { ok: false, msg: 'Deze som is al beantwoord' }; if ((s.blok || 0) > nu) return { ok: false, msg: 'Nog even wachten' };
+      const q = d.qs[s.idx % d.qs.length]; const ok = !p_skip && p_waarde != null && q.accept.some(a => Math.abs(p_waarde - a.v) <= a.t);
+      let dmg = 0, geblokt = false, klaar = false;
+      if (ok) {
+        s.goed++; s.reeks++; s.lg = nu; s.blok = 0;
+        if (d.mode === 'kasteel') {
+          const oid = d.maker === me.id ? d.tegen : d.maker; const o = d.st[oid]; dmg = s.reeks % 3 === 0 ? 20 : 10;
+          if (o.schild > 0) { o.schild--; geblokt = true; dmg = 0; } else o.hp = Math.max(0, o.hp - dmg);
+          if (s.goed % 5 === 0) s.schild = Math.min(1, s.schild + 1);
+          if (o.hp === 0) { d.status = 'klaar'; d.winnaar = me.id; klaar = true; }
+        }
+      } else { if (!p_skip) s.fout++; s.reeks = 0; s.blok = nu + (d.mode === 'sprint' ? 3000 : 5000); }
+      s.idx++; save(db);
+      return { ok: true, correct: ok, antwoordTekst: q.antwoordTekst, uitleg: q.uitleg, dmg, geblokt, klaar, blok_ms: ok ? 0 : d.mode === 'sprint' ? 3000 : 5000 };
+    },
+    rk_docent_duels({ p_pw, p_aan }) { const db = load(); if (p_pw !== db.pw) return { ok: false }; if (p_aan !== null && p_aan !== undefined) db.duelsUit = !p_aan; save(db); const ds = Object.values(db.d || {}); return { ok: true, aan: !db.duelsUit, vandaag: ds.filter(d => d.status === 'klaar').length, bezig: ds.filter(d => d.status === 'bezig').length }; },
     rk_game_create({ p_pw, p_klas, p_mode, p_questions, p_duration }) {
       const db = load(); if (p_pw !== db.pw) return { ok: false, msg: 'Wachtwoord onjuist' };
       let c; do { c = String(1000 + Math.floor(Math.random() * 9000)); } while (db.g[c]);
@@ -335,6 +407,7 @@ function schermHome() {
       <div style="color:var(--zacht);font-size:.92rem">Klas ${esc(S.klas)} · 🪙 ${st.m.munten} munten · ${behaald}/${BADGES.length} badges</div></div>
     <div class="knoprij">
       <button class="knop accent" data-act="strijd-join">⚔️ Doe mee met de strijd</button>
+      <button class="knop accent" data-act="duel-arena">🤺 Duel</button>
       <button class="knop licht" data-act="ranglijst">🏆 Ranglijst</button>
       <button class="knop licht" data-act="badges">🎖️ Badges</button>
     </div>
@@ -683,15 +756,22 @@ async function docentHome() {
   if (!D.klas && D.klassen.length) D.klas = D.klassen[0];
   app().innerHTML = docentKop('o') + `<main class="wrap" style="max-width:1200px"><div class="kaart"><div class="knoprij">
     <label class="veld" style="margin:0;min-width:180px">Klas<select id="dKlas">${D.klassen.length ? D.klassen.map(k => `<option ${k === D.klas ? 'selected' : ''}>${esc(k)}</option>`).join('') : '<option value="">(nog geen leerlingen)</option>'}</select></label>
-    <button class="knop licht" data-act="d-ververs">↻ Verversen</button><button class="knop licht" data-act="d-csv">⬇︎ Exporteer CSV</button></div></div>
+    <button class="knop licht" data-act="d-ververs">↻ Verversen</button><button class="knop licht" data-act="d-csv">⬇︎ Exporteer CSV</button>
+    <div class="ruimte" style="flex:1"></div><div id="dDuels" class="knoprij"></div></div></div>
     <div id="dInhoud"><p>Laden…</p></div></main>`;
   $('#dKlas').addEventListener('change', e => { D.klas = e.target.value; laadKlas(); });
+  laadDuelSchakelaar(null);
   laadKlas();
 }
 async function laadKlas() {
   if (!D.klas) { $('#dInhoud').innerHTML = '<div class="kaart">Er hebben nog geen leerlingen ingelogd. Leerlingen maken zelf een account aan met de klascode die u opgeeft (bijvoorbeeld 4V2).</div>'; return; }
   try { D.data = (await API.call('rk_docent_overzicht', { p_pw: PW, p_klas: D.klas })) || []; } catch (e) { $('#dInhoud').innerHTML = '<div class="melding fout">Laden mislukt.</div>'; return; }
   renderKlas();
+}
+async function laadDuelSchakelaar(aan) {
+  let r0; try { r0 = await API.call('rk_docent_duels', { p_pw: PW, p_aan: aan }); } catch (e) { return; }
+  const el = $('#dDuels'); if (!el || !r0.ok) return;
+  el.innerHTML = `<span style="font-weight:600">🤺 Duels:</span><button class="knop klein ${r0.aan ? 'groen' : 'licht'}" data-act="d-duels" data-aan="${r0.aan ? 0 : 1}">${r0.aan ? 'Aan ✓' : 'Uit'}</button><small style="color:var(--zacht)">${r0.bezig} bezig · ${r0.vandaag} gespeeld vandaag</small>`;
 }
 function statsLeerling(l) {
   const s = normState(l.state || {}); const per = PAR.map(p => { const old = st; st = s; const x = parStatus(p); st = old; return x; });
@@ -720,10 +800,11 @@ function renderKlas() {
     <p style="font-size:.85rem;color:var(--zacht);margin:6px 0">Het getal bij een vakje is het aantal leerlingen dat het heeft voltooid (🦘 = overgeslagen telt niet mee).</p>
     <div class="perkament perkament-klein">${docentKaart(rows)}</div></div>
   <div class="kaart"><h3 style="margin-top:0">Lastigste opdrachten</h3>${moeilijk.length ? `<div class="tabelwrap"><table class="docent-tabel"><tr><th>Vraag</th><th>Gem. foute pogingen</th><th>Uitwerking bekeken</th><th>Gemaakt door</th></tr>${moeilijk.map(([id, o]) => `<tr><td><b>${id}</b></td><td>${(o.a / o.n).toFixed(1).replace('.', ',')}</td><td>${o.g}×</td><td>${o.n}</td></tr>`).join('')}</table></div>` : '<p>Nog geen gegevens.</p>'}</div>
-  <div class="kaart"><h3 style="margin-top:0">Leerlingen</h3><div class="tabelwrap"><table class="docent-tabel"><tr><th>Naam</th><th>XP</th>${PAR.map(p => `<th>${p.id}</th>`).join('')}<th>Kaart H1</th><th>Kaart H2</th><th>1e keer goed</th><th>Hints</th><th>Training</th><th>Laatst actief</th><th></th></tr>
+  <div class="kaart"><h3 style="margin-top:0">Leerlingen</h3><div class="tabelwrap"><table class="docent-tabel"><tr><th>Naam</th><th>XP</th>${PAR.map(p => `<th>${p.id}</th>`).join('')}<th>Kaart H1</th><th>Kaart H2</th><th>Duels</th><th>1e keer goed</th><th>Hints</th><th>Training</th><th>Laatst actief</th><th></th></tr>
   ${rows.map(r0 => `<tr><td><b>${esc(r0.l.naam)}</b><br><small style="color:var(--zacht)">${esc(r0.l.lln || 'geen lln')}</small>${r0.l.pinreset ? ' <small style="color:#b06f00">(pin gereset)</small>' : ''}${r0.l.geblokkeerd ? ' <small style="color:#c8412d">(geblokkeerd)</small>' : ''}</td><td>${r0.l.xp}</td>
     ${r0.per.map(x => `<td><span class="mini"><small>${x.done}/${x.totaal} ${'★'.repeat(x.sterren)}</small><div class="balk"><div style="width:${100 * x.done / x.totaal}%"></div></div></span></td>`).join('')}
     ${r0.km.map(k => `<td style="white-space:nowrap">${k ? `${k.klaar}/${k.totaal}${k.sprong ? ` · ${k.sprong}🦘` : ''}${k.boss ? ' · 🐉✓' : k.ronde ? ` · 🐉 ronde ${k.ronde + 1}` : ''}<br><small>❤️ ${k.hp}</small>` : '–'}</td>`).join('')}
+    <td>${r0.s.duel ? `${r0.s.duel.gewonnen}/${r0.s.duel.gespeeld}<br><small>gewonnen</small>` : '–'}</td>
     <td>${r0.pctEerste == null ? '–' : r0.pctEerste + '%'}</td><td>${r0.hints}</td><td>${r0.train}</td><td>${fmtDatum(r0.l.updated_at)}</td>
     <td style="white-space:nowrap"><button class="knop licht klein" data-act="d-pin" data-id="${esc(r0.l.id)}" data-n="${esc(r0.l.naam)}">Pin reset</button> <button class="knop licht klein" data-act="d-del" data-id="${esc(r0.l.id)}" data-n="${esc(r0.l.naam)}">🗑</button></td></tr>`).join('')}
   </table></div><p style="font-size:.82rem;color:var(--zacht)">Pin reset: de leerling kiest bij de volgende keer inloggen zelf een nieuwe pincode. Voortgang blijft behouden.</p></div>`;
@@ -867,7 +948,7 @@ function stand(s, eind) {
 
 /* ================= ACTIES ================= */
 const ACT = {
-  'home': () => { sluitModal(); clearInterval(ui.evIv); if (S && st) { ui.cur = null; if (ui.scherm === 'kaart' || !ui.node) schermHome(); else openKaart(ui.node.h); } else schermLogin(); },
+  'home': () => { sluitModal(); clearInterval(ui.evIv); stopDuel(); if (S && st) { ui.cur = null; if (ui.scherm === 'kaart' || !ui.node) schermHome(); else openKaart(ui.node.h); } else schermLogin(); },
   'uitloggen': async () => { await flush(); localStorage.removeItem('rk_sessie'); S = null; st = null; schermLogin(); },
   'open-par': el => { sluitModal(); ui.cur = null; ui.qid = null; openPar(el.dataset.id, 'training'); },
   'slot': el => { sluitModal(); startCheck(el.dataset.id); },
@@ -920,6 +1001,7 @@ const ACT = {
   'd-uit': () => { stopHost(); PW = null; sessionStorage.removeItem('rk_pw'); schermLogin(); },
   'd-ververs': () => laadKlas(),
   'd-kaart': el => { D.kaartH = el.dataset.h; renderKlas(); },
+  'd-duels': el => { const aan = el.dataset.aan === '1'; if (!aan && !confirm('Duels uitzetten? Lopende duels worden nog afgemaakt, maar er kunnen geen nieuwe meer starten.')) return; laadDuelSchakelaar(aan); },
   'd-csv': () => exporteerCSV(),
   'd-pin': async el => { if (!confirm('Pincode resetten voor ' + el.dataset.n + '? De leerling kiest bij de volgende keer inloggen zelf een nieuwe pincode.')) return; await API.call('rk_docent_pinreset', { p_pw: PW, p_id: el.dataset.id }); ui.scherm === 'accounts' ? laadAccounts() : laadKlas(); },
   'd-del': async el => { if (!confirm('Account van ' + el.dataset.n + ' en alle voortgang definitief verwijderen?')) return; await API.call('rk_docent_verwijderen', { p_pw: PW, p_ids: [el.dataset.id] }); ui.scherm === 'accounts' ? laadAccounts() : laadKlas(); },
@@ -938,6 +1020,7 @@ const ACT = {
   'h-docent': async () => { const v = $('#hAnt').value; const [x] = E.parseNum(v); if (isNaN(x)) return toast('Typ een getal'); const res = await control('docent', x, null); if (res && res.ok) toast('Antwoord docent ontvangen'); }
 };
 /*KAART*/
+/*DUEL*/
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const f = ACT[el.dataset.act]; if (f) { if (el.type !== 'checkbox') e.preventDefault(); f(el); }
