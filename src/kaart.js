@@ -61,7 +61,7 @@ const MAXHP = 5, MAXBOONS = 3;
 const KRANT = {
   h1: [
     { tekst: 'Jesse staat gemiddeld een 6,45. Hij roept: "Afgerond is dat een 7, want 6,45 wordt 6,5 en dat wordt 7!" De school rondt af op hele cijfers.', ok: false, uitleg: 'Je rondt maar één keer af en kijkt naar het eerste cijfer achter de komma: een 4. Het wordt dus een 6. Twee keer afronden mag niet.' },
-    { tekst: 'Een krant schrijft: "Het bbp van Nederland is $ 912,2 miljard, dat is ruim 9 biljoen dollar."', ok: false, uitleg: '912,2 miljard = 0,9122 biljoen. Een biljoen is duizend miljard, dus het is nog geen 1 biljoen dollar.' },
+    { tekst: 'Een krant schrijft: "Het bbp van Nederland is ongeveer € 1.030 miljard, dat is ruim 10 biljoen euro."', ok: false, uitleg: '€ 1.030 miljard = € 1,03 biljoen. Een biljoen is duizend miljard, dus het is ruim 1 biljoen euro, geen 10 biljoen.' },
     { tekst: 'Een leerling berekent (17,3 ÷ 6) × 9.000 en rondt de deling eerst af op 2,9. Hij zegt: "Dat maakt niks uit, het antwoord blijft hetzelfde."', ok: false, uitleg: 'Met 2,9 krijg je 26.100; zonder tussentijds afronden 25.950. Tussentijds afronden geeft dus een ander antwoord.' },
     { tekst: 'Een journalist schrijft: "Een bedrag van 45.000 miljoen euro is hetzelfde als 45 miljard euro."', ok: true, uitleg: 'Klopt: duizend miljoen = één miljard, dus 45.000 miljoen = 45 miljard.' }
   ],

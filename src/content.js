@@ -166,7 +166,7 @@ const PAR = [
  ]},
 
  { id: '1.2', h: 1, titel: 'Rekenen met grote getallen', p: '6–7', theorie: T['1.2'], gens: ['gr_voluit', 'gr_inw', 'gr_maal', 'gr_deel'], opdrachten: [
-  { nr: '1.6', p: 6, context: 'Bbp in 2020: Verenigde Staten $ 20,94 biljoen, China $ 17,72 biljoen, India $ 2,623 biljoen en Nederland $ 912,2 miljard. Schrijf de bedragen voluit, dus met alle nullen.', vragen: [
+  { nr: '1.6', p: 6, context: 'Bbp in 2020: Verenigde Staten $ 20,94 biljoen, China $ 17,72 biljoen, India $ 2,623 biljoen en Nederland $ 912,2 miljard. Om landen te kunnen vergelijken, zijn alle bedragen omgerekend in dollars (ook die van Nederland). Schrijf de bedragen voluit, dus met alle nullen.', vragen: [
    { id: '1.6a', type: 'num', tekst: 'Verenigde Staten: $ 20,94 biljoen voluit.', antwoord: 20.94e12, d: 0, exact: true, unit: '$', voluit: true, hint: 'Biljoen heeft 12 nullen: schuif de komma 12 plaatsen naar rechts.', uitleg: '$ 20.940.000.000.000', tags: ['nullen'],
      fouten: [{ v: 20.94e9, tekst: 'Dat is 20,94 miljard. Biljoen heeft 12 nullen, niet 9.', soort: 'nullen' }] },
    { id: '1.6b', type: 'num', tekst: 'China: $ 17,72 biljoen voluit.', antwoord: 17.72e12, d: 0, exact: true, unit: '$', voluit: true, hint: '12 plaatsen opschuiven.', uitleg: '$ 17.720.000.000.000', tags: ['nullen'], fouten: [{ v: 17.72e9, tekst: 'Biljoen heeft 12 nullen, niet 9.', soort: 'nullen' }] },
@@ -179,7 +179,7 @@ const PAR = [
    { id: '1.7b', type: 'num', tekst: 'Iemand heeft $ 17,72 biljoen en geeft elke seconde $ 1.000 uit. Hoeveel jaar kan hij dat volhouden? Rond af op hele jaren (1 jaar = 365 dagen).', antwoord: 17.72e12 / 1000 / (365 * 24 * 3600), d: 0, unit: 'jaar',
      hint: 'Bereken eerst het aantal seconden: 17,72 biljoen ÷ 1.000. Hoeveel seconden zitten er in een jaar?', uitleg: '17,72 biljoen ÷ 1.000 = 17,72 miljard seconden. Een jaar = 365 × 24 × 60 × 60 = 31.536.000 s. 17.720.000.000 ÷ 31.536.000 = 561,9 → 562 jaar.', tags: ['nullen'] }
   ]},
-  { nr: '1.8', p: 7, context: 'Inwoners in 2020: VS 332,6 miljoen, India 1,326 miljard, Nederland 17,28 miljoen. Gebruik het bbp uit opdracht 1.6.', vragen: [
+  { nr: '1.8', p: 7, context: 'Inwoners in 2020: VS 332,6 miljoen, India 1,326 miljard, Nederland 17,28 miljoen. Gebruik het bbp uit opdracht 1.6 (omgerekend in dollars).', vragen: [
    { id: '1.8a', type: 'num', tekst: 'Bereken het bbp per inwoner van de VS.', antwoord: 20.94e12 / 332.6e6, d: 2, unit: '$', hint: 'Biljoen ÷ miljoen = miljoen. 20,94 ÷ 332,6 en dan × 1.000.000.', uitleg: '20,94 ÷ 332,6 = 0,06296 → × 1.000.000 = $ 62.958,51.', tags: ['nullen'] },
    { id: '1.8b', type: 'num', tekst: 'Bereken het bbp per inwoner van India.', antwoord: 2.623e12 / 1.326e9, d: 2, unit: '$', hint: 'Biljoen ÷ miljard = duizend.', uitleg: '2,623 ÷ 1,326 = 1,97813 → × 1.000 = $ 1.978,13.', tags: ['nullen'] },
    { id: '1.8c', type: 'num', tekst: 'Bereken het bbp per inwoner van Nederland.', antwoord: 912.2e9 / 17.28e6, d: 2, unit: '$', hint: 'Miljard ÷ miljoen = duizend.', uitleg: '912,2 ÷ 17,28 = 52,789 → × 1.000 = $ 52.789,35.', tags: ['nullen'] }
@@ -469,11 +469,14 @@ G.gr_voluit = () => {
     fouten: [s > 1e6 ? { v: Math.round(x * s / 1000), tekst: 'Je hebt 3 nullen te weinig.', soort: 'nullen' } : null, { v: Math.round(x * s * 1000), tekst: 'Je hebt 3 nullen te veel.', soort: 'nullen' }].filter(Boolean) };
 };
 G.gr_inw = () => {
-  const land = pick([['Duitsland', 3.9e12, 83.2e6, 'biljoen', 'miljoen'], ['België', 507.9e9, 11.6e6, 'miljard', 'miljoen'], ['Japan', 5.06e12, 125.7e6, 'biljoen', 'miljoen'], ['Brazilië', 1.44e12, 213e6, 'biljoen', 'miljoen'], ['Indonesië', 1.06e12, 273.5e6, 'biljoen', 'miljoen'], ['Zweden', 541e9, 10.4e6, 'miljard', 'miljoen']]);
-  const [n, bbp, inw, w1, w2] = land; const v = { biljoen: 1e12, miljard: 1e9 }[w1];
+  // eurolanden in euro's, de Verenigde Staten in dollars (afgeronde cijfers, ongeveer 2023)
+  const land = pick([['Duitsland', 4.12e12, 84.5e6, '€'], ['Frankrijk', 2.82e12, 68.2e6, '€'], ['Italië', 2.13e12, 59.0e6, '€'], ['Spanje', 1.46e12, 48.6e6, '€'],
+    ['Nederland', 1.03e12, 17.9e6, '€'], ['België', 584e9, 11.8e6, '€'], ['Oostenrijk', 474e9, 9.1e6, '€'], ['Ierland', 510e9, 5.3e6, '€'],
+    ['de Verenigde Staten', 27.4e12, 335e6, '$'], ['de Verenigde Staten', 25.7e12, 333e6, '$']]);
+  const [n, bbp, inw, val] = land; const w1 = bbp >= 1e12 ? 'biljoen' : 'miljard'; const v = { biljoen: 1e12, miljard: 1e9 }[w1];
   const ans = bbp / inw;
-  return { type: 'num', tekst: `${n} heeft een bbp van $ ${sf(bbp / v)} ${w1} en ${fmt(inw / 1e6, 1)} miljoen inwoners. Bereken het bbp per inwoner (afgerond op hele dollars).`,
-    antwoord: ans, d: 0, unit: '$', tags: ['nullen'], uitleg: `${w1} ÷ miljoen = ${w1 === 'biljoen' ? 'miljoen' : 'duizend'}. ${sf(bbp / v)} ÷ ${fmt(inw / 1e6, 1)} × ${w1 === 'biljoen' ? '1.000.000' : '1.000'} = $ ${fmt(r(ans, 0), 0)}.`,
+  return { type: 'num', tekst: `${cap(n)} heeft een bbp van ${val} ${sf(bbp / v)} ${w1} en ${fmt(inw / 1e6, 1)} miljoen inwoners. Bereken het bbp per inwoner (afgerond op hele ${val === '€' ? 'euro\'s' : 'dollars'}).`,
+    antwoord: ans, d: 0, unit: val, tags: ['nullen'], uitleg: `${w1} ÷ miljoen = ${w1 === 'biljoen' ? 'miljoen' : 'duizend'}. ${sf(bbp / v)} ÷ ${fmt(inw / 1e6, 1)} × ${w1 === 'biljoen' ? '1.000.000' : '1.000'} = ${val} ${fmt(r(ans, 0), 0)}.`,
     fouten: [{ v: r(ans / 1000, 0), t: 1, tekst: 'Je bent een factor duizend kwijtgeraakt. Tel de nullen goed.', soort: 'nullen' }, { v: r(ans * 1000, 0), t: 1000, tekst: 'Je hebt een factor duizend te veel.', soort: 'nullen' }] };
 };
 G.gr_maal = () => {
