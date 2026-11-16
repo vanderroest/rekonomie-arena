@@ -33,6 +33,16 @@ async function laadDuelLijst(eerste) {
   const lijstHTML = L.open.length ? `<ul class="duellijst">${L.open.map(o => `<li><span class="dl-ic">${MODI[o.mode].ic}</span><span class="dl-tekst"><b>${esc(o.naam)}</b><small>${MODI[o.mode].naam} · ${esc(ondNaam(o.onderwerp))}</small></span><button class="knop accent klein" data-act="duel-join" data-code="${o.code}">Accepteer</button></li>`).join('')}</ul>`
     : '<p style="color:var(--zacht)">Er staan nu geen uitdagingen open. Maak er zelf een!</p>';
   const el = $('#duelInhoud');
+  const geblokt = L.blok_ms > 0;
+  if (!eerste && DU.geblokt !== geblokt) eerste = true;
+  DU.geblokt = geblokt;
+  if (geblokt) {
+    DU.blokEind = Date.now() + L.blok_ms;
+    if (eerste || !el.querySelector('#blokTijd')) el.innerHTML = `<div class="kaart" style="text-align:center"><div style="font-size:3rem">⛔</div><h3>Even geen duels</h3>
+      <p>Je hebt 3 keer achter elkaar een duel opgegeven. Daarom kun je even geen duels maken of accepteren.</p><p>Weer beschikbaar over <b id="blokTijd">–</b></p><button class="knop" data-act="home">Naar de kaartenkamer</button></div>`;
+    const r = Math.ceil(L.blok_ms / 1000); $('#blokTijd').textContent = `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`;
+    return;
+  }
   if (!eerste && el.querySelector('#duelOpen')) { el.querySelector('#duelOpen').innerHTML = lijstHTML; return; }
   if (!L.aan) { el.innerHTML = `<div class="kaart" style="text-align:center"><div style="font-size:3rem">🔒</div><h3>Duels staan op dit moment uit</h3><p>Je docent heeft de duels uitgezet. Werk verder op je kaart!</p><button class="knop" data-act="home">Terug</button></div>`; return; }
   el.innerHTML = `
@@ -91,7 +101,7 @@ function renderDuel() {
   if (box.dataset.fase !== 'bezig') {
     box.dataset.fase = 'bezig';
     const tegen = s.tegen ? esc(s.tegen.naam) : 'Tegenstander';
-    box.innerHTML = `<div class="wrap duelwrap"><div class="duelkop"><span>${MODI[s.mode].ic} <b>${MODI[s.mode].naam}</b> · ${esc(ondNaam(s.onderwerp))}</span><span class="dueltimer" id="duelTimer">–</span></div>
+    box.innerHTML = `<div class="wrap duelwrap"><div class="duelkop"><span>${MODI[s.mode].ic} <b>${MODI[s.mode].naam}</b> · ${esc(ondNaam(s.onderwerp))}</span><span class="duelrechts"><span class="dueltimer" id="duelTimer">–</span><button class="knop klein opgeefknop" data-act="duel-opgeven">🏳️ Opgeven</button></span></div><div id="duelBanner"></div>
       ${s.mode === 'kasteel' ? `<div class="kastelen"><div class="kasteelvak" id="kIk">${kasteelSVG('ik')}<div class="knaam">Jij</div><div class="hpbalk"><div id="hpIk"></div></div><div class="kinfo" id="kInfoIk"></div></div>
           <div class="kogelbaan"><span class="kogel" id="kogel">●</span></div>
           <div class="kasteelvak" id="kTegen">${kasteelSVG('tegen')}<div class="knaam">${tegen}</div><div class="hpbalk"><div id="hpTegen"></div></div><div class="kinfo" id="kInfoTegen"></div></div></div>`
@@ -100,6 +110,13 @@ function renderDuel() {
     DU.vraagIdx = -1;
   }
   duelStand();
+  const ban = $('#duelBanner');
+  if (ban && s.tegen && s.tegen.opgegeven && !ban.dataset.getoond) {
+    ban.dataset.getoond = '1';
+    ban.innerHTML = `<div class="opgeefbanner"><span class="ob-tekst">🏳️ <b>${esc(s.tegen.naam)}</b> heeft opgegeven. Jij wint dit duel. Je mag doorspelen tot de tijd om is${s.mode === 'kasteel' ? ' of het kasteel verwoest is' : ''}: elk goed antwoord levert nog XP op.</span>
+      <button class="knop klein" data-act="duel-afronden">Nu afronden</button></div>`;
+    const kn = document.querySelector('[data-act=duel-opgeven]'); if (kn) kn.remove();
+  }
   if (s.vraag && s.me.idx !== DU.vraagIdx && !DU.toonResultaat) toonDuelVraag();
 }
 function kasteelSVG(wie) {
@@ -190,6 +207,7 @@ function duelUitslag() {
     <p>${MODI[s.mode].naam} · ${esc(ondNaam(s.onderwerp))}</p>
     <div class="vs" style="color:var(--tekst)"><div style="background:#eef3fa"><div>Jij</div><div class="sc" style="color:var(--kl-blauw)">${s.mode === 'kasteel' ? s.me.hp + ' ❤' : s.me.goed}</div><small>${s.me.goed} goed · ${s.me.fout} fout</small></div>
       <div style="background:#f6eeee"><div>${esc(t.naam)}</div><div class="sc" style="color:#8a2b1d">${s.mode === 'kasteel' ? t.hp + ' ❤' : t.goed}</div><small>${t.goed} goed · ${t.fout} fout</small></div></div>
+    ${t.opgegeven ? `<p>🏳️ ${esc(t.naam)} heeft opgegeven.</p>` : ''}
     ${beloning ? `<p style="margin-top:14px"><b>${beloning}</b></p>` : ''}${s.uitslag === 'gewonnen' && !s.telt ? '<p style="font-size:.85rem;color:var(--zacht)">Deze overwinning telt niet voor badges: je tegenstander had minder dan 5 sommen goed.</p>' : ''}
     <div class="knoprij" style="justify-content:center;margin-top:12px"><button class="knop accent" data-act="duel-arena">Nieuw duel</button><button class="knop licht" data-act="home">Naar de kaartenkamer</button></div></div></div>`;
 }
@@ -199,6 +217,25 @@ Object.assign(ACT, {
   'duel-maak': () => duelMaak(),
   'duel-join': el => duelJoin(el.dataset.code),
   'duel-annuleer': async () => { try { await API.call('rk_duel_annuleer', { p_lln: S.lln, p_pin: S.pin, p_code: DU.code }); } catch (e) { /* */ } stopDuel(); schermDuel(); },
+  'duel-opgeven': () => {
+    const s = DU.s; if (!s || s.status !== 'bezig') return;
+    const r = (s.me.opgeef_reeks || 0) + 1;
+    modal(`<h3 style="margin-top:0">🏳️ Duel opgeven?</h3>
+      <ul style="padding-left:1.2em;line-height:1.5"><li>Je krijgt <b>geen XP</b> voor dit duel en het telt als verloren.</li>
+      <li>Je tegenstander mag doorspelen en wint het duel.</li>
+      <li>Geef je <b>3 keer achter elkaar</b> op, dan kun je <b>5 minuten</b> geen duels spelen.${r >= 3 ? ' <b style="color:#c8412d">Dit is je 3e keer op rij: na opgeven ben je 5 minuten geblokkeerd.</b>' : r === 2 ? ' Dit zou je 2e keer op rij zijn.' : ''}</li></ul>
+      <div class="knoprij" style="justify-content:flex-end"><button class="knop licht" data-act="sluit-modal">Doorspelen</button><button class="knop rood" data-act="duel-opgeven-ok">Opgeven</button></div>`);
+  },
+  'duel-opgeven-ok': async () => {
+    sluitModal(); const s = DU.s; let res;
+    try { res = await API.call('rk_duel_opgeven', { p_lln: S.lln, p_pin: S.pin, p_code: DU.code }); } catch (e) { toast('Opgeven mislukt: geen verbinding.'); return; }
+    stopDuel();
+    if (res.ok && !res.afgerond) { const d = duelState(); if (!d.verwerkt[s.code]) { d.verwerkt[s.code] = 1; d.gespeeld++; d.opgegeven = (d.opgegeven || 0) + 1; bewaar(); } }
+    ui.cur = null; ui.node = null; schermHome();
+    toast(res.ok && res.blok_ms ? '⛔ Je hebt 3 keer achter elkaar opgegeven: 5 minuten geen duels.' : '🏳️ Je hebt het duel opgegeven. Geen XP voor dit duel.');
+  },
+  'duel-afronden': async () => { try { await API.call('rk_duel_opgeven', { p_lln: S.lln, p_pin: S.pin, p_code: DU.code }); } catch (e) { /* */ } pollDuel(); },
+  'sluit-modal': () => sluitModal(),
   'duel-verstuur': () => duelVerstuur(false),
   'duel-skip': () => duelVerstuur(true),
   'duel-teken': () => { const i = $('#duelAnt'); if (i) i.value = i.value.trim().startsWith('-') ? i.value.trim().slice(1) : '-' + i.value.trim(); }

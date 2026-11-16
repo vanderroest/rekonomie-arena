@@ -29,6 +29,9 @@ create table if not exists public.rk_duel_stand (
   laatst_goed_at timestamptz,
   primary key (code, speler)
 );
+alter table public.rk_duel_stand add column if not exists opgegeven boolean not null default false;
+alter table public.rk_students add column if not exists duel_opgeef_reeks integer not null default 0;
+alter table public.rk_students add column if not exists duel_blok_tot timestamptz;
 alter table public.rk_duels enable row level security;
 alter table public.rk_duel_stand enable row level security;
 revoke all on public.rk_duels, public.rk_duel_stand from anon, authenticated;
@@ -51,6 +54,7 @@ declare me uuid := rk_auth(p_lln, p_pin); k text; c text; tries int := 0;
 begin
   if me is null then return jsonb_build_object('ok',false,'msg','Log opnieuw in'); end if;
   if not rk_duels_aan() then return jsonb_build_object('ok',false,'msg','Duels staan op dit moment uit'); end if;
+  if exists (select 1 from rk_students where id = me and duel_blok_tot > now()) then return jsonb_build_object('ok',false,'msg','Je hebt 3 keer achter elkaar opgegeven. Je kunt even geen duels spelen.'); end if;
   if p_mode not in ('sprint','kasteel') then return jsonb_build_object('ok',false,'msg','Onbekende modus'); end if;
   delete from rk_duels where created_at < now() - interval '1 day';
   update rk_duels set status = 'geannuleerd' where maker = me and status = 'open';
@@ -74,8 +78,10 @@ declare me uuid := rk_auth(p_lln, p_pin); k text; mijn text;
 begin
   if me is null then return jsonb_build_object('ok',false,'msg','Log opnieuw in'); end if;
   select klas into k from rk_students where id = me;
-  select code into mijn from rk_duels where (maker = me or tegen = me) and (status = 'open' and created_at > now() - interval '10 minutes' or status = 'bezig') order by created_at desc limit 1;
+  select d.code into mijn from rk_duels d where (d.maker = me or d.tegen = me) and (d.status = 'open' and d.created_at > now() - interval '10 minutes' or d.status = 'bezig')
+    and not exists (select 1 from rk_duel_stand x where x.code = d.code and x.speler = me and x.opgegeven) order by d.created_at desc limit 1;
   return jsonb_build_object('ok',true,'aan',rk_duels_aan(),'klas',k,'mijn',mijn,
+    'blok_ms', (select greatest(0, coalesce(round(extract(epoch from duel_blok_tot - now())*1000), 0)) from rk_students where id = me),
     'open', coalesce((select jsonb_agg(jsonb_build_object('code',d.code,'naam',s.naam,'mode',d.mode,'onderwerp',d.onderwerp,'sinds',round(extract(epoch from now()-d.created_at))) order by d.created_at desc)
       from rk_duels d join rk_students s on s.id = d.maker
       where d.klas = k and d.status = 'open' and d.maker <> me and d.created_at > now() - interval '10 minutes'), '[]'::jsonb));
@@ -87,6 +93,7 @@ declare me uuid := rk_auth(p_lln, p_pin); d rk_duels; k text;
 begin
   if me is null then return jsonb_build_object('ok',false,'msg','Log opnieuw in'); end if;
   if not rk_duels_aan() then return jsonb_build_object('ok',false,'msg','Duels staan op dit moment uit'); end if;
+  if exists (select 1 from rk_students where id = me and duel_blok_tot > now()) then return jsonb_build_object('ok',false,'msg','Je hebt 3 keer achter elkaar opgegeven. Je kunt even geen duels spelen.'); end if;
   select * into d from rk_duels where code = trim(p_code) for update;
   if not found or d.status <> 'open' or d.created_at < now() - interval '10 minutes' then return jsonb_build_object('ok',false,'msg','Deze uitdaging bestaat niet (meer)'); end if;
   select klas into k from rk_students where id = me;
@@ -113,7 +120,9 @@ begin
   if not found or d.status <> 'bezig' or now() < d.start_at + make_interval(secs => d.duur) then return; end if;
   select * into a from rk_duel_stand where code = d.code and speler = d.maker;
   select * into b from rk_duel_stand where code = d.code and speler = d.tegen;
-  if d.mode = 'sprint' then
+  if a.opgegeven and not b.opgegeven then w := b.speler;
+  elsif b.opgegeven and not a.opgegeven then w := a.speler;
+  elsif d.mode = 'sprint' then
     if a.goed > b.goed then w := a.speler; elsif b.goed > a.goed then w := b.speler;
     elsif a.goed > 0 then w := case when a.laatst_goed_at <= b.laatst_goed_at then a.speler else b.speler end; end if;
   else
@@ -139,11 +148,15 @@ begin
   res := jsonb_build_object('ok',true,'code',d.code,'mode',d.mode,'onderwerp',d.onderwerp,'status',d.status,'duur',d.duur,
     'tot_start_ms', case when d.start_at is null then null else round(extract(epoch from d.start_at - now())*1000) end,
     'resterend_ms', case when d.start_at is null then null else greatest(0, round(extract(epoch from d.start_at + make_interval(secs => d.duur) - now())*1000)) end,
-    'me', jsonb_build_object('idx',s.idx,'goed',s.goed,'fout',s.fout,'hp',s.hp,'reeks',s.reeks,'schild',s.schild,
+    'me', jsonb_build_object('idx',s.idx,'goed',s.goed,'fout',s.fout,'hp',s.hp,'reeks',s.reeks,'schild',s.schild,'opgegeven',s.opgegeven,
+           'opgeef_reeks',(select duel_opgeef_reeks from rk_students where id = me),
            'blok_ms', greatest(0, coalesce(round(extract(epoch from s.blok_tot - now())*1000), 0))),
-    'tegen', case when o.speler is null then null else jsonb_build_object('naam',onaam,'goed',o.goed,'fout',o.fout,'hp',o.hp,'reeks',o.reeks,'schild',o.schild) end);
+    'tegen', case when o.speler is null then null else jsonb_build_object('naam',onaam,'goed',o.goed,'fout',o.fout,'hp',o.hp,'reeks',o.reeks,'schild',o.schild,'opgegeven',o.opgegeven) end);
   if d.status = 'bezig' and now() >= d.start_at then
     res := res || jsonb_build_object('vraag', rk_q_public(d.questions -> (s.idx % n)));
+  end if;
+  if d.status = 'klaar' and not s.opgegeven then
+    update rk_students set duel_opgeef_reeks = 0 where id = me and duel_opgeef_reeks <> 0;   -- een uitgespeeld duel doorbreekt de reeks
   end if;
   if d.status = 'klaar' then
     res := res || jsonb_build_object('uitslag', case when d.winnaar is null then 'gelijk' when d.winnaar = me then 'gewonnen' else 'verloren' end,
@@ -163,6 +176,7 @@ begin
   if d.status <> 'bezig' then return jsonb_build_object('ok',false,'msg','Het duel is afgelopen','klaar',true); end if;
   if now() < d.start_at then return jsonb_build_object('ok',false,'msg','Het duel is nog niet begonnen'); end if;
   select * into s from rk_duel_stand where code = d.code and speler = me for update;
+  if s.opgegeven then return jsonb_build_object('ok',false,'msg','Je hebt dit duel opgegeven','klaar',true); end if;
   if p_idx <> s.idx then return jsonb_build_object('ok',false,'msg','Deze som is al beantwoord'); end if;
   if s.blok_tot is not null and s.blok_tot > now() then return jsonb_build_object('ok',false,'msg','Nog even wachten'); end if;
   n := jsonb_array_length(d.questions); q := d.questions -> (s.idx % n);
@@ -191,6 +205,29 @@ begin
     'blok_ms', case when ok then 0 when d.mode = 'sprint' then 3000 else 5000 end);
 end $$;
 
+create or replace function public.rk_duel_opgeven(p_lln text, p_pin text, p_code text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := rk_auth(p_lln, p_pin); d rk_duels; o rk_duel_stand; r int; blok timestamptz;
+begin
+  if me is null then return jsonb_build_object('ok',false,'msg','Log opnieuw in'); end if;
+  perform rk_duel_einde(trim(p_code));
+  select * into d from rk_duels where code = trim(p_code) for update;
+  if not found or (d.maker <> me and coalesce(d.tegen, '00000000-0000-0000-0000-000000000000'::uuid) <> me) then return jsonb_build_object('ok',false,'msg','Duel niet gevonden'); end if;
+  if d.status <> 'bezig' then return jsonb_build_object('ok',false,'msg','Het duel is al afgelopen','klaar',true); end if;
+  select * into o from rk_duel_stand where code = d.code and speler <> me;
+  if o.opgegeven then   -- de tegenstander gaf al op: dit is afronden, zonder gevolgen
+    update rk_duels set status = 'klaar', winnaar = me, eind_at = now() where code = d.code;
+    return jsonb_build_object('ok',true,'afgerond',true);
+  end if;
+  update rk_duel_stand set opgegeven = true where code = d.code and speler = me and not opgegeven;
+  update rk_students set duel_opgeef_reeks = duel_opgeef_reeks + 1 where id = me returning duel_opgeef_reeks into r;
+  if r >= 3 then
+    blok := now() + interval '5 minutes';
+    update rk_students set duel_opgeef_reeks = 0, duel_blok_tot = blok where id = me;
+  end if;
+  return jsonb_build_object('ok',true,'afgerond',false,'reeks',r,'blok_ms', case when blok is null then 0 else 300000 end);
+end $$;
+
 create or replace function public.rk_docent_duels(p_pw text, p_aan boolean) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
@@ -205,4 +242,4 @@ begin
 end $$;
 
 grant execute on function public.rk_duel_lijst(text,text), public.rk_duel_join(text,text,text), public.rk_duel_annuleer(text,text,text),
-  public.rk_duel_state(text,text,text), public.rk_duel_antwoord(text,text,text,integer,numeric,boolean), public.rk_docent_duels(text,boolean) to anon, authenticated;
+  public.rk_duel_state(text,text,text), public.rk_duel_antwoord(text,text,text,integer,numeric,boolean), public.rk_duel_opgeven(text,text,text), public.rk_docent_duels(text,boolean) to anon, authenticated;

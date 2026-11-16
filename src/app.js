@@ -36,11 +36,13 @@ const API = {
 const Mock = (() => {
   const K = 'rk_mock_db';
   const mAuth = (db, lln, pin) => Object.values(db.s).find(x => x.lln === String(lln).trim() && x.pin === pin && pin && (x.fails || 0) < 10);
-  const dStand = () => ({ idx: 0, goed: 0, fout: 0, hp: 100, reeks: 0, schild: 0, blok: 0, lg: null });
+  const dStand = () => ({ idx: 0, goed: 0, fout: 0, hp: 100, reeks: 0, schild: 0, blok: 0, lg: null, op: false });
+  const BLOKMSG = 'Je hebt 3 keer achter elkaar opgegeven. Je kunt even geen duels spelen.';
   const dEinde = d => {
     if (d.status !== 'bezig' || Date.now() < d.start + d.duur * 1000) return false;
     const a = d.st[d.maker], b = d.st[d.tegen]; let w = null;
-    if (d.mode === 'sprint') { if (a.goed !== b.goed) w = a.goed > b.goed ? d.maker : d.tegen; else if (a.goed > 0) w = a.lg <= b.lg ? d.maker : d.tegen; }
+    if (a.op && !b.op) w = d.tegen; else if (b.op && !a.op) w = d.maker;
+    else if (d.mode === 'sprint') { if (a.goed !== b.goed) w = a.goed > b.goed ? d.maker : d.tegen; else if (a.goed > 0) w = a.lg <= b.lg ? d.maker : d.tegen; }
     else { if (a.hp !== b.hp) w = a.hp > b.hp ? d.maker : d.tegen; else if (a.goed !== b.goed) w = a.goed > b.goed ? d.maker : d.tegen; }
     d.status = 'klaar'; d.winnaar = w; return true;
   };
@@ -82,6 +84,7 @@ const Mock = (() => {
     'rk-duel-maak'({ lln, pin, mode, onderwerp }) {
       const db = load(); const me = Object.values(db.s).find(x => x.lln === String(lln) && x.pin === pin && pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
       if (db.duelsUit) return { ok: false, msg: 'Duels staan op dit moment uit' };
+      if ((me.dblok || 0) > Date.now()) return { ok: false, msg: BLOKMSG };
       const MIX = { h1: ['1.1', '1.2', '1.3'], h2: ['2.1', '2.2', '2.3', '2.4'] }; const pars = MIX[onderwerp] || [onderwerp];
       const qs = []; for (let i = 0; i < 60; i++) qs.push(E.toBattle(genereer(pars[Math.floor(Math.random() * pars.length)])));
       db.d = db.d || {}; Object.values(db.d).forEach(d => { if (d.maker === me.id && d.status === 'open') d.status = 'geannuleerd'; });
@@ -92,12 +95,13 @@ const Mock = (() => {
     rk_duel_lijst({ p_lln, p_pin }) {
       const db = load(); const me = mAuth(db, p_lln, p_pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
       const ds = Object.values(db.d || {}); const vers = d => Date.now() - d.t < 600000;
-      const mijn = ds.filter(d => (d.maker === me.id || d.tegen === me.id) && (d.status === 'open' && vers(d) || d.status === 'bezig')).sort((a, b) => b.t - a.t)[0];
-      return { ok: true, aan: !db.duelsUit, klas: me.klas, mijn: mijn ? mijn.code : null, open: ds.filter(d => d.klas === me.klas && d.status === 'open' && d.maker !== me.id && vers(d)).map(d => ({ code: d.code, naam: db.s[d.maker].naam, mode: d.mode, onderwerp: d.onderwerp })) };
+      const mijn = ds.filter(d => (d.maker === me.id || d.tegen === me.id) && (d.status === 'open' && vers(d) || d.status === 'bezig') && !(d.st[me.id] && d.st[me.id].op)).sort((a, b) => b.t - a.t)[0];
+      return { ok: true, aan: !db.duelsUit, klas: me.klas, blok_ms: Math.max(0, (me.dblok || 0) - Date.now()), mijn: mijn ? mijn.code : null, open: ds.filter(d => d.klas === me.klas && d.status === 'open' && d.maker !== me.id && vers(d)).map(d => ({ code: d.code, naam: db.s[d.maker].naam, mode: d.mode, onderwerp: d.onderwerp })) };
     },
     rk_duel_join({ p_lln, p_pin, p_code }) {
       const db = load(); const me = mAuth(db, p_lln, p_pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
       if (db.duelsUit) return { ok: false, msg: 'Duels staan op dit moment uit' };
+      if ((me.dblok || 0) > Date.now()) return { ok: false, msg: BLOKMSG };
       const d = (db.d || {})[String(p_code).trim()]; if (!d || d.status !== 'open' || Date.now() - d.t > 600000) return { ok: false, msg: 'Deze uitdaging bestaat niet (meer)' };
       if (d.klas !== me.klas) return { ok: false, msg: 'Deze uitdaging is van een andere klas' };
       if (d.maker === me.id) return { ok: false, msg: 'Je kunt niet tegen jezelf spelen' };
@@ -110,8 +114,9 @@ const Mock = (() => {
       if (dEinde(d)) save(db);
       const s = d.st[me.id]; const oid = d.maker === me.id ? d.tegen : d.maker; const o = oid ? d.st[oid] : null; const nu = Date.now();
       const res = { ok: true, code: d.code, mode: d.mode, onderwerp: d.onderwerp, status: d.status, duur: d.duur, tot_start_ms: d.start ? d.start - nu : null, resterend_ms: d.start ? Math.max(0, d.start + d.duur * 1000 - nu) : null,
-        me: { idx: s.idx, goed: s.goed, fout: s.fout, hp: s.hp, reeks: s.reeks, schild: s.schild, blok_ms: Math.max(0, (s.blok || 0) - nu) },
-        tegen: o ? { naam: db.s[oid].naam, goed: o.goed, fout: o.fout, hp: o.hp, reeks: o.reeks, schild: o.schild } : null };
+        me: { idx: s.idx, goed: s.goed, fout: s.fout, hp: s.hp, reeks: s.reeks, schild: s.schild, opgegeven: s.op, opgeef_reeks: me.dreeks || 0, blok_ms: Math.max(0, (s.blok || 0) - nu) },
+        tegen: o ? { naam: db.s[oid].naam, goed: o.goed, fout: o.fout, hp: o.hp, reeks: o.reeks, schild: o.schild, opgegeven: o.op } : null };
+      if (d.status === 'klaar' && !s.op && me.dreeks) { me.dreeks = 0; save(db); }
       if (d.status === 'bezig' && nu >= d.start) { const q = Object.assign({}, d.qs[s.idx % d.qs.length]); delete q.accept; delete q.fouten; delete q.antwoordTekst; delete q.uitleg; res.vraag = q; }
       if (d.status === 'klaar') { res.uitslag = d.winnaar == null ? 'gelijk' : d.winnaar === me.id ? 'gewonnen' : 'verloren'; res.telt = (o ? o.goed : 0) >= 5; }
       return res;
@@ -121,7 +126,7 @@ const Mock = (() => {
       const d = (db.d || {})[String(p_code).trim()]; if (!d) return { ok: false, msg: 'Duel niet gevonden' };
       dEinde(d); if (d.status !== 'bezig') { save(db); return { ok: false, msg: 'Het duel is afgelopen', klaar: true }; }
       const nu = Date.now(); if (nu < d.start) return { ok: false, msg: 'Het duel is nog niet begonnen' };
-      const s = d.st[me.id]; if (p_idx !== s.idx) return { ok: false, msg: 'Deze som is al beantwoord' }; if ((s.blok || 0) > nu) return { ok: false, msg: 'Nog even wachten' };
+      const s = d.st[me.id]; if (s.op) return { ok: false, msg: 'Je hebt dit duel opgegeven', klaar: true }; if (p_idx !== s.idx) return { ok: false, msg: 'Deze som is al beantwoord' }; if ((s.blok || 0) > nu) return { ok: false, msg: 'Nog even wachten' };
       const q = d.qs[s.idx % d.qs.length]; const ok = !p_skip && p_waarde != null && q.accept.some(a => Math.abs(p_waarde - a.v) <= a.t);
       let dmg = 0, geblokt = false, klaar = false;
       if (ok) {
@@ -135,6 +140,16 @@ const Mock = (() => {
       } else { if (!p_skip) s.fout++; s.reeks = 0; s.blok = nu + (d.mode === 'sprint' ? 3000 : 5000); }
       s.idx++; save(db);
       return { ok: true, correct: ok, antwoordTekst: q.antwoordTekst, uitleg: q.uitleg, dmg, geblokt, klaar, blok_ms: ok ? 0 : d.mode === 'sprint' ? 3000 : 5000 };
+    },
+    rk_duel_opgeven({ p_lln, p_pin, p_code }) {
+      const db = load(); const me = mAuth(db, p_lln, p_pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
+      const d = (db.d || {})[String(p_code).trim()]; if (!d || (d.maker !== me.id && d.tegen !== me.id)) return { ok: false, msg: 'Duel niet gevonden' };
+      dEinde(d); if (d.status !== 'bezig') { save(db); return { ok: false, msg: 'Het duel is al afgelopen', klaar: true }; }
+      const o = d.st[d.maker === me.id ? d.tegen : d.maker];
+      if (o.op) { d.status = 'klaar'; d.winnaar = me.id; save(db); return { ok: true, afgerond: true }; }
+      d.st[me.id].op = true; me.dreeks = (me.dreeks || 0) + 1; let blok = 0;
+      const r = me.dreeks; if (r >= 3) { me.dreeks = 0; me.dblok = Date.now() + 300000; blok = 300000; }
+      save(db); return { ok: true, afgerond: false, reeks: r, blok_ms: blok };
     },
     rk_docent_duels({ p_pw, p_aan }) { const db = load(); if (p_pw !== db.pw) return { ok: false }; if (p_aan !== null && p_aan !== undefined) db.duelsUit = !p_aan; save(db); const ds = Object.values(db.d || {}); return { ok: true, aan: !db.duelsUit, vandaag: ds.filter(d => d.status === 'klaar').length, bezig: ds.filter(d => d.status === 'bezig').length }; },
     rk_game_create({ p_pw, p_klas, p_mode, p_questions, p_duration }) {
