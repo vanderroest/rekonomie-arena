@@ -160,7 +160,7 @@ begin
   end if;
   if d.status = 'klaar' then
     res := res || jsonb_build_object('uitslag', case when d.winnaar is null then 'gelijk' when d.winnaar = me then 'gewonnen' else 'verloren' end,
-                                     'telt', coalesce(o.goed, 0) >= 5);
+                                     'telt', coalesce(o.goed, 0) >= 3);
   end if;
   return res;
 end $$;

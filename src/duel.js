@@ -1,8 +1,10 @@
 /* ================= DUELS (1-tegen-1: Sprint en Kasteelstrijd) ================= */
-const ONDERWERPEN = [['h1', 'Mix hoofdstuk 1 · Rekenen'], ['h2', 'Mix hoofdstuk 2 · Procenten']].concat(PAR.map(p => [p.id, '§ ' + p.id + ' ' + p.titel]));
-const ondNaam = o => (ONDERWERPEN.find(x => x[0] === o) || [o, o])[1];
+const DOND = RKDUEL.DUEL_ONDERWERPEN;
+const ondLijst = o => RKDUEL.duelKeuze(o).map(id => DOND.find(x => x.id === id));
+const ondNaam = o => { const l = ondLijst(o); return l.length ? l.map(x => x.naam).join(', ') : String(o); };
+const ondChips = o => `<span class="ondchips">${ondLijst(o).map(x => `<span class="ondchip">${esc(x.naam)}</span>`).join('')}</span>`;
 const MODI = { sprint: { ic: '⏱️', naam: 'Sprint', oms: '3 minuten: wie de meeste sommen goed heeft, wint.' }, kasteel: { ic: '🏰', naam: 'Kasteelstrijd', oms: 'Elk goed antwoord beschiet het kasteel van de ander. Wie het eerst het andere kasteel verwoest, wint.' } };
-const DU = { poll: null, tik: null, code: null, s: null, keuze: { ond: 'h1', mode: 'sprint' }, vraagIdx: -1, bezig: false, vorigeHpTegen: 100, vorigeHpIk: 100 };
+const DU = { poll: null, tik: null, code: null, s: null, keuze: { ond: ['afr', 'groot'], mode: 'sprint' }, vraagIdx: -1, bezig: false, vorigeHpTegen: 100, vorigeHpIk: 100 };
 const vandaag = () => new Date().toISOString().slice(0, 10);
 function duelState() { if (!st.duel) st.duel = { gespeeld: 0, gewonnen: 0, gewonnenTelt: 0, besteSprint: 0, verwoest: 0, onneembaar: 0, dag: {}, verwerkt: {}, ond: {} }; return st.duel; }
 BADGES.push(
@@ -30,7 +32,7 @@ async function laadDuelLijst(eerste) {
   if (!L.ok) return schermLogin(L.msg);
   if (L.mijn) { stopDuel(); return openDuel(L.mijn); }
   const D2 = duelState(); const k = DU.keuze;
-  const lijstHTML = L.open.length ? `<ul class="duellijst">${L.open.map(o => `<li><span class="dl-ic">${MODI[o.mode].ic}</span><span class="dl-tekst"><b>${esc(o.naam)}</b><small>${MODI[o.mode].naam} · ${esc(ondNaam(o.onderwerp))}</small></span><button class="knop accent klein" data-act="duel-join" data-code="${o.code}">Accepteer</button></li>`).join('')}</ul>`
+  const lijstHTML = L.open.length ? `<ul class="duellijst">${L.open.map(o => `<li><span class="dl-ic">${MODI[o.mode].ic}</span><span class="dl-tekst"><b>${esc(o.naam)}</b><small>${MODI[o.mode].naam}</small>${ondChips(o.onderwerp)}</span><button class="knop accent klein" data-act="duel-join" data-code="${o.code}">Accepteer</button></li>`).join('')}</ul>`
     : '<p style="color:var(--zacht)">Er staan nu geen uitdagingen open. Maak er zelf een!</p>';
   const el = $('#duelInhoud');
   const geblokt = L.blok_ms > 0;
@@ -48,22 +50,31 @@ async function laadDuelLijst(eerste) {
   el.innerHTML = `
     <div class="grid2">
       <div class="kaart"><h3 style="margin-top:0">Nieuwe uitdaging</h3>
-        <label class="veld">Onderwerp<select id="duelOnd">${ONDERWERPEN.map(([v, n]) => `<option value="${v}" ${v === k.ond ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+        <div class="stapkop"><span class="stapnr">1</span>Vink de stof aan die je wilt oefenen</div>
+        <div id="duelOnd">${[1, 2].map(h => `<div class="ondgroep"><div class="ondgroepkop"><b>Hoofdstuk ${h} · ${h === 1 ? 'Rekenen' : 'Procenten'}</b><button type="button" class="knop klein licht" data-act="duel-alles" data-h="${h}">Alles van H${h}</button></div>
+          ${DOND.filter(x => x.h === h).map(x => `<label class="ondvak"><input type="checkbox" value="${x.id}" ${k.ond.includes(x.id) ? 'checked' : ''}><span class="ondtekst"><b>${esc(x.naam)}</b> <small>§ ${x.par}</small><span class="ondvb">bijv. ${esc(x.vb)}</span></span></label>`).join('')}</div>`).join('')}</div>
+        <div class="stapkop"><span class="stapnr">2</span>Kies de spelvorm</div>
         <div class="moduskeuze">${Object.entries(MODI).map(([m, x]) => `<button class="moduskaart ${k.mode === m ? 'gekozen' : ''}" data-act="duel-modus" data-m="${m}"><span class="mi">${x.ic}</span><b>${x.naam}</b><small>${x.oms}</small></button>`).join('')}</div>
-        <button class="knop accent vol" data-act="duel-maak" style="margin-top:12px">Uitdaging maken</button></div>
+        <button class="knop accent vol" data-act="duel-maak" id="duelMaakKnop" style="margin-top:12px">Uitdaging maken</button></div>
       <div class="kaart"><h3 style="margin-top:0">Open uitdagingen in ${esc(L.klas)}</h3><div id="duelOpen">${lijstHTML}</div>
         <form id="duelCodeForm" class="knoprij" style="margin-top:10px"><input id="duelCode" class="antwoord-invoer" inputmode="numeric" maxlength="4" placeholder="code" style="flex:0 1 130px;letter-spacing:.2em;text-align:center"><button class="knop" type="submit">Meedoen met code</button></form></div>
     </div>
     <div class="kaart"><h3 style="margin-top:0">Jouw duels</h3><p>Gespeeld: <b>${D2.gespeeld}</b> · Gewonnen: <b>${D2.gewonnen}</b> · Beste sprint: <b>${D2.besteSprint}</b> goed</p>
       <div class="badges">${BADGES.filter(b => ['duellist', 'sprintkampioen', 'kasteelbreker', 'onneembaar', 'duelkoning'].includes(b[0])).map(([id, ic, nm, oms]) => `<div class="badge ${st.bd[id] ? 'behaald' : ''}"><div class="ic">${ic}</div><div class="bn">${nm}</div><div class="bo">${oms}</div></div>`).join('')}</div>
-      <p style="font-size:.85rem;color:var(--zacht);margin-bottom:0">Je verdient met maximaal 5 duels per dag XP. Een overwinning telt voor badges als je tegenstander minstens 5 sommen goed had.</p></div>`;
-  $('#duelOnd').addEventListener('change', e => { DU.keuze.ond = e.target.value; });
+      <p style="font-size:.85rem;color:var(--zacht);margin-bottom:0">Je verdient met maximaal 5 duels per dag XP. Een overwinning telt voor badges als je tegenstander minstens 3 sommen goed had.</p></div>`;
+  $('#duelOnd').addEventListener('change', () => { DU.keuze.ond = [...document.querySelectorAll('#duelOnd input:checked')].map(i => i.value); duelKeuzeKnop(); });
+  duelKeuzeKnop();
   $('#duelCodeForm').addEventListener('submit', e => { e.preventDefault(); const c = $('#duelCode').value.trim(); if (/^\d{4}$/.test(c)) duelJoin(c); });
 }
+function duelKeuzeKnop() {
+  const b = $('#duelMaakKnop'); if (!b) return; const n = DU.keuze.ond.length;
+  b.disabled = n === 0; b.textContent = n === 0 ? 'Vink eerst minstens één onderwerp aan' : `Uitdaging maken (${n} ${n === 1 ? 'onderwerp' : 'onderwerpen'})`;
+}
 async function duelMaak() {
+  if (!DU.keuze.ond.length) return;
   const knop = document.querySelector('[data-act=duel-maak]'); if (knop) { knop.disabled = true; knop.textContent = 'Sommen maken…'; }
   try {
-    const res = await API.fn('rk-duel-maak', { lln: S.lln, pin: S.pin, mode: DU.keuze.mode, onderwerp: DU.keuze.ond });
+    const res = await API.fn('rk-duel-maak', { lln: S.lln, pin: S.pin, mode: DU.keuze.mode, onderwerp: DU.keuze.ond.join(',') });
     if (!res.ok) return schermDuel(res.msg);
     openDuel(res.code);
   } catch (e) { schermDuel('Het maken van de uitdaging is mislukt. Probeer het opnieuw.'); }
@@ -91,7 +102,7 @@ function renderDuel() {
   const s = DU.s; const box = $('#duelScherm'); if (!box) return;
   if (s.status === 'geannuleerd') { stopDuel(); return schermDuel('De uitdaging is geannuleerd.'); }
   if (s.status === 'open') {
-    if (box.dataset.fase !== 'open') { box.dataset.fase = 'open'; box.innerHTML = `<div class="wrap"><div class="kaart" style="text-align:center"><div style="font-size:3rem">${MODI[s.mode].ic}</div><h2>${MODI[s.mode].naam} · ${esc(ondNaam(s.onderwerp))}</h2>
+    if (box.dataset.fase !== 'open') { box.dataset.fase = 'open'; box.innerHTML = `<div class="wrap"><div class="kaart" style="text-align:center"><div style="font-size:3rem">${MODI[s.mode].ic}</div><h2>${MODI[s.mode].naam}</h2><p>Deze stof wordt getest:</p>${ondChips(s.onderwerp)}
       <p>Wachten op een tegenstander… Je uitdaging staat in de lijst van je klas. Je klasgenoot kan ook deze code gebruiken:</p><div class="spelcode" style="color:var(--kl-blauw)">${s.code}</div>
       <p style="color:var(--zacht);font-size:.9rem">De uitdaging verloopt na 10 minuten.</p><button class="knop licht" data-act="duel-annuleer">Annuleren</button></div></div>`; }
     return;
@@ -101,7 +112,7 @@ function renderDuel() {
   if (box.dataset.fase !== 'bezig') {
     box.dataset.fase = 'bezig';
     const tegen = s.tegen ? esc(s.tegen.naam) : 'Tegenstander';
-    box.innerHTML = `<div class="wrap duelwrap"><div class="duelkop"><span>${MODI[s.mode].ic} <b>${MODI[s.mode].naam}</b> · ${esc(ondNaam(s.onderwerp))}</span><span class="duelrechts"><span class="dueltimer" id="duelTimer">–</span><button class="knop klein opgeefknop" data-act="duel-opgeven">🏳️ Opgeven</button></span></div><div id="duelBanner"></div>
+    box.innerHTML = `<div class="wrap duelwrap"><div class="duelkop"><span>${MODI[s.mode].ic} <b>${MODI[s.mode].naam}</b> · <small>${esc(ondNaam(s.onderwerp))}</small></span><span class="duelrechts"><span class="dueltimer" id="duelTimer">–</span><button class="knop klein opgeefknop" data-act="duel-opgeven">🏳️ Opgeven</button></span></div><div id="duelBanner"></div>
       ${s.mode === 'kasteel' ? `<div class="kastelen"><div class="kasteelvak" id="kIk">${kasteelSVG('ik')}<div class="knaam">Jij</div><div class="hpbalk"><div id="hpIk"></div></div><div class="kinfo" id="kInfoIk"></div></div>
           <div class="kogelbaan"><span class="kogel" id="kogel">●</span></div>
           <div class="kasteelvak" id="kTegen">${kasteelSVG('tegen')}<div class="knaam">${tegen}</div><div class="hpbalk"><div id="hpTegen"></div></div><div class="kinfo" id="kInfoTegen"></div></div></div>`
@@ -208,11 +219,14 @@ function duelUitslag() {
     <div class="vs" style="color:var(--tekst)"><div style="background:#eef3fa"><div>Jij</div><div class="sc" style="color:var(--kl-blauw)">${s.mode === 'kasteel' ? s.me.hp + ' ❤' : s.me.goed}</div><small>${s.me.goed} goed · ${s.me.fout} fout</small></div>
       <div style="background:#f6eeee"><div>${esc(t.naam)}</div><div class="sc" style="color:#8a2b1d">${s.mode === 'kasteel' ? t.hp + ' ❤' : t.goed}</div><small>${t.goed} goed · ${t.fout} fout</small></div></div>
     ${t.opgegeven ? `<p>🏳️ ${esc(t.naam)} heeft opgegeven.</p>` : ''}
-    ${beloning ? `<p style="margin-top:14px"><b>${beloning}</b></p>` : ''}${s.uitslag === 'gewonnen' && !s.telt ? '<p style="font-size:.85rem;color:var(--zacht)">Deze overwinning telt niet voor badges: je tegenstander had minder dan 5 sommen goed.</p>' : ''}
+    ${beloning ? `<p style="margin-top:14px"><b>${beloning}</b></p>` : ''}${s.uitslag === 'gewonnen' && !s.telt ? '<p style="font-size:.85rem;color:var(--zacht)">Deze overwinning telt niet voor badges: je tegenstander had minder dan 3 sommen goed.</p>' : ''}
     <div class="knoprij" style="justify-content:center;margin-top:12px"><button class="knop accent" data-act="duel-arena">Nieuw duel</button><button class="knop licht" data-act="home">Naar de kaartenkamer</button></div></div></div>`;
 }
 Object.assign(ACT, {
   'duel-arena': () => schermDuel(),
+  'duel-alles': el => { const h = +el.dataset.h; const ids = DOND.filter(x => x.h === h).map(x => x.id); const alleAan = ids.every(i => DU.keuze.ond.includes(i));
+    DU.keuze.ond = alleAan ? DU.keuze.ond.filter(i => !ids.includes(i)) : [...new Set(DU.keuze.ond.concat(ids))];
+    document.querySelectorAll('#duelOnd input').forEach(i => { i.checked = DU.keuze.ond.includes(i.value); }); duelKeuzeKnop(); },
   'duel-modus': el => { DU.keuze.mode = el.dataset.m; document.querySelectorAll('.moduskaart').forEach(b => b.classList.toggle('gekozen', b.dataset.m === DU.keuze.mode)); },
   'duel-maak': () => duelMaak(),
   'duel-join': el => duelJoin(el.dataset.code),

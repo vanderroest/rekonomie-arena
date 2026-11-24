@@ -85,8 +85,8 @@ const Mock = (() => {
       const db = load(); const me = Object.values(db.s).find(x => x.lln === String(lln) && x.pin === pin && pin); if (!me) return { ok: false, msg: 'Log opnieuw in' };
       if (db.duelsUit) return { ok: false, msg: 'Duels staan op dit moment uit' };
       if ((me.dblok || 0) > Date.now()) return { ok: false, msg: BLOKMSG };
-      const MIX = { h1: ['1.1', '1.2', '1.3'], h2: ['2.1', '2.2', '2.3', '2.4'] }; const pars = MIX[onderwerp] || [onderwerp];
-      const qs = []; for (let i = 0; i < 60; i++) qs.push(E.toBattle(genereer(pars[Math.floor(Math.random() * pars.length)])));
+      const keuze = RKDUEL.duelKeuze(onderwerp); if (!keuze.length) return { ok: false, msg: 'Kies minstens één onderwerp' }; onderwerp = keuze.join(',');
+      const qs = []; while (qs.length < 60) for (const o of [...keuze].sort(() => Math.random() - 0.5)) if (qs.length < 60) qs.push(E.toBattle(RKDUEL.duelSom(o)));
       db.d = db.d || {}; Object.values(db.d).forEach(d => { if (d.maker === me.id && d.status === 'open') d.status = 'geannuleerd'; });
       let c; do { c = String(1000 + Math.floor(Math.random() * 9000)); } while (db.d[c]);
       db.d[c] = { code: c, klas: me.klas, maker: me.id, tegen: null, mode, onderwerp, status: 'open', qs, duur: mode === 'sprint' ? 180 : 480, start: null, winnaar: null, t: Date.now(), st: { [me.id]: dStand() } };
@@ -118,7 +118,7 @@ const Mock = (() => {
         tegen: o ? { naam: db.s[oid].naam, goed: o.goed, fout: o.fout, hp: o.hp, reeks: o.reeks, schild: o.schild, opgegeven: o.op } : null };
       if (d.status === 'klaar' && !s.op && me.dreeks) { me.dreeks = 0; save(db); }
       if (d.status === 'bezig' && nu >= d.start) { const q = Object.assign({}, d.qs[s.idx % d.qs.length]); delete q.accept; delete q.fouten; delete q.antwoordTekst; delete q.uitleg; res.vraag = q; }
-      if (d.status === 'klaar') { res.uitslag = d.winnaar == null ? 'gelijk' : d.winnaar === me.id ? 'gewonnen' : 'verloren'; res.telt = (o ? o.goed : 0) >= 5; }
+      if (d.status === 'klaar') { res.uitslag = d.winnaar == null ? 'gelijk' : d.winnaar === me.id ? 'gewonnen' : 'verloren'; res.telt = (o ? o.goed : 0) >= 3; }
       return res;
     },
     rk_duel_antwoord({ p_lln, p_pin, p_code, p_idx, p_waarde, p_skip }) {

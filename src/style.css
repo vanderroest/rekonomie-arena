@@ -431,3 +431,16 @@ textarea.open { width: 100%; min-height: 110px; border: 2px solid var(--rand); b
 .opgeefbanner { background: #fff8e6; border: 2px solid var(--kl-accent); border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; line-height: 1.4; }
 .opgeefbanner .knop { margin-left: auto; }
 .ob-tekst { flex: 1 1 260px; }
+.stapkop { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 6px 0 8px; }
+.stapnr { width: 24px; height: 24px; border-radius: 50%; background: var(--kl-blauw); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: .85rem; }
+.ondgroep { margin-bottom: 10px; }
+.ondgroepkop { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; }
+.ondvak { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border: 2px solid var(--rand); border-radius: 12px; margin-bottom: 6px; cursor: pointer; background: #fff; }
+.ondvak:has(input:checked) { border-color: var(--kl-accent); background: #fff8e6; }
+.ondvak input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--kl-blauw); flex: none; }
+.ondtekst { display: flex; flex-direction: column; flex-wrap: wrap; }
+.ondtekst small { color: var(--zacht); }
+.ondvb { font-size: .8rem; color: var(--zacht); font-style: italic; }
+.ondchips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; justify-content: inherit; }
+.ondchip { background: #e9eef6; color: var(--kl-blauw); border-radius: 999px; padding: 2px 9px; font-size: .78rem; font-weight: 600; }
+.kaart[style*="center"] .ondchips { justify-content: center; }
